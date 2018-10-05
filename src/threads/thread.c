@@ -28,6 +28,8 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+//static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -71,6 +73,13 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/*struct list * get_sleep_list ()
+{
+
+list_init (&sleep_list);
+return &sleep_list;
+}*/
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -92,7 +101,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-
+  
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -204,6 +213,19 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+//Adding compare function
+bool
+compare_priority (struct list_elem *e1,struct list_elem *e2, void *aux)
+{
+ struct thread *s1 = list_entry(e1,struct thread,elem);
+ struct thread *s2 = list_entry(e2,struct thread,elem);
+if ((s1->priority)>(s2->priority))
+   return true;
+ else
+   return false;
+}
+
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -237,7 +259,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list,&t->elem,&compare_priority,NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -296,6 +319,7 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -308,7 +332,11 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //list_push_back (&ready_list, &cur->elem);
+  /* Adding ordered ready list*/ 
+  {
+  list_insert_ordered(&ready_list,&cur->elem,&compare_priority,NULL);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);

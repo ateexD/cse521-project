@@ -47,14 +47,16 @@ test_priority_fifo (void)
   msg ("If the order varies then there is a bug.");
 
   output = op = malloc (sizeof *output * THREAD_CNT * ITER_CNT * 2);
+  msg("OUTPUT\n");
   ASSERT (output != NULL);
   lock_init (&lock);
-
+  
   thread_set_priority (PRI_DEFAULT + 2);
   for (i = 0; i < THREAD_CNT; i++) 
     {
       char name[16];
       struct simple_thread_data *d = data + i;
+      printf("Inside");
       snprintf (name, sizeof name, "%d", i);
       d->id = i;
       d->iterations = 0;

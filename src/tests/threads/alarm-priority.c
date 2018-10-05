@@ -52,7 +52,8 @@ alarm_priority_thread (void *aux UNUSED)
   timer_sleep (wake_time - timer_ticks ());
 
   /* Print a message on wake-up. */
-  msg ("Thread %s woke up.", thread_name ());
+  msg ("Thread priority %d woke up.",list_entry(&thread_current()->elem,struct thread, elem)->priority);
+
 
   sema_up (&wait_sema);
 }

@@ -30,6 +30,23 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/* Structure to store thread properties in list of sleeping
+   threads. */
+static struct sleeper_struct
+{ 
+  int *priority;
+  struct list_elem *thread_elem;
+  int64_t ticks;
+  struct list_elem elem;
+};
+
+/* List of sleeper threads */
+static struct list sleeper_list;
+
+/* Semaphore to ensure list insert is done for one thread 
+   at any point of time. */
+static struct semaphore sema;
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +54,9 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  //Initializing sleeper_list
+  list_init(&sleeper_list);
+  sema_init(&sema,1);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -46,7 +66,7 @@ timer_calibrate (void)
   unsigned high_bit, test_bit;
 
   ASSERT (intr_get_level () == INTR_ON);
-  printf ("Calibrating timer...  ");
+  //printf ("Calibrating timer...  ");
 
   /* Approximate loops_per_tick as the largest power-of-two
      still less than one timer tick. */
@@ -84,17 +104,52 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+/* Function to return thread with least number of ticks or greatest 
+   priority. */
+bool
+compare (struct list_elem *e1,struct list_elem *e2, void *aux)
+{
+ struct sleeper_struct *s1 = list_entry(e1,struct sleeper_struct,elem); 
+ struct sleeper_struct *s2 = list_entry(e2,struct sleeper_struct,elem);
+if (s1->ticks<s2->ticks || *(s1->priority)>*(s2->priority))
+   return true;
+ else 
+   return false; 
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
+timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
-
+  enum intr_level old_level;
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
-}
+//  while (timer_elapsed (start) < ticks) 
+//    thread_yield ();
+ if (ticks>0)
+  { 
+  
+   struct sleeper_struct *sleeper=malloc(sizeof(struct sleeper_struct));
+   struct list_elem *thread_elm=malloc(sizeof(struct list_elem));
+   int priority=malloc(sizeof(int));
+   
+   thread_elm=&thread_current()->elem;
+   priority=&thread_current()->priority;
+   sleeper->thread_elem=thread_elm;
+   sleeper->ticks=ticks+start;
+   sleeper->priority=priority;
+   
+   sema_down(&sema);
+   list_insert_ordered (&sleeper_list, &sleeper->elem,&compare, NULL);   
+   sema_up(&sema);
+   
+   old_level=intr_disable();   
+   thread_block();
+   intr_set_level(old_level);  
+   
+  }
+ }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
    turned on. */
@@ -165,12 +220,34 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+void
+wake_up ()
+{
+if (!list_empty(&sleeper_list))
+   { 
+  // printf("List not empty %d",list_size(&sleeper_list));
+   struct sleeper_struct *first_sleeper=malloc(sizeof(struct sleeper_struct));
+   first_sleeper=list_entry(list_begin(&sleeper_list),struct sleeper_struct,elem);
+    if (ticks>=first_sleeper->ticks)
+    {
+    //list_pop_front(&sleeper_list);
+    //printf("\nPriority %d\n",list_entry(first_sleeper->thread_elem,struct thread, elem)->priority);
+  
+    thread_unblock(list_entry(list_entry(list_pop_front(&sleeper_list),struct sleeper_struct, elem)->thread_elem,struct thread,elem));
+    //sema_up(first_sleeper->sema);
+    //printf("Sema upped\n");
+    wake_up();
+    }
+   }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  wake_up();
   thread_tick ();
 }
 
