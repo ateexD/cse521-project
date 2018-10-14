@@ -72,7 +72,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-struct semaphore *ready_sema;
+struct semaphore ready_sema;
 struct semaphore *create_sema;
 /*struct list * get_sleep_list ()
 {
@@ -214,8 +214,10 @@ thread_create (const char *name, int priority,
 
   thread_unblock (t);
     /* Add to run queue. */
+  sema_down(&ready_sema);
   preempt_thread();
-     return tid;
+  sema_up(&ready_sema);
+  return tid;
   // sema_up (&create_sema);
 }
 
@@ -265,19 +267,16 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
- // list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
-  //list_sort (&ready_list, compare_priority, NULL);
   t->status = THREAD_READY;
-  // preempt_thread();
   intr_set_level (old_level);
 }
 void preempt_thread()
 {
+    
     if (!list_empty(&ready_list) && thread_current() != idle_thread)
     {
         int priority = list_entry(list_front(&ready_list), struct thread, elem) -> priority;
-        //printf("%d vs %d\n", priority, thread_current()->priority);
         if (priority > thread_current()->priority)
           thread_yield();
     }
@@ -381,11 +380,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  // sema_down(&create_sema); 
-  // printf("Changing priority of %s\n", thread_current()->name);
   thread_current ()->priority = new_priority;
+  sema_down(&ready_sema);
   preempt_thread();
-  // sema_up(&create_sema);
+  sema_up(&ready_sema);
 }
 
 
