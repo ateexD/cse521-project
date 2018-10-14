@@ -214,11 +214,8 @@ thread_create (const char *name, int priority,
 
   thread_unblock (t);
     /* Add to run queue. */
-  /*
-  if (priority > thread_current()->priority)
-      thread_yield();
-  return tid;
-  */
+  preempt_thread();
+     return tid;
   // sema_up (&create_sema);
 }
 
@@ -268,14 +265,23 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
-  // list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
-  list_sort (&ready_list, compare_priority, NULL);
+ // list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
+  //list_sort (&ready_list, compare_priority, NULL);
   t->status = THREAD_READY;
-  
+  // preempt_thread();
   intr_set_level (old_level);
 }
-
+void preempt_thread()
+{
+    if (!list_empty(&ready_list) && thread_current() != idle_thread)
+    {
+        int priority = list_entry(list_front(&ready_list), struct thread, elem) -> priority;
+        //printf("%d vs %d\n", priority, thread_current()->priority);
+        if (priority > thread_current()->priority)
+          thread_yield();
+    }
+}
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -351,7 +357,7 @@ thread_yield (void)
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
-  
+
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -375,10 +381,11 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  sema_down(&create_sema); 
+  // sema_down(&create_sema); 
   // printf("Changing priority of %s\n", thread_current()->name);
   thread_current ()->priority = new_priority;
-  sema_up(&create_sema);
+  preempt_thread();
+  // sema_up(&create_sema);
 }
 
 
