@@ -73,7 +73,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 struct semaphore ready_sema;
-struct semaphore *create_sema;
+struct semaphore create_sema;
 /*struct list * get_sleep_list ()
 {
 
@@ -177,7 +177,7 @@ tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
-  // sema_down (&create_sema);
+  sema_down (&create_sema);
   //int old_level = intr_disable();
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -210,8 +210,7 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-  //intr_set_level(old_level);
-
+  sema_up(&create_sema);
   thread_unblock (t);
     /* Add to run queue. */
   sema_down(&ready_sema);
