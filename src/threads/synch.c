@@ -50,6 +50,19 @@ sema_init (struct semaphore *sema, unsigned value)
   list_init (&sema->waiters);
 }
 
+/*
+static struct list sema_holder_list;
+
+struct sema_holder
+{
+int new_priority;
+int old_priority;
+struct thread t*;
+struct sema waiting_for*;
+struct list_elem elem;
+};
+*/
+
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -114,10 +127,16 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
-  sema->value++;
-  preempt_thread(); 
+    {
+list_sort(&sema->waiters,&compare_priority, NULL);
+thread_unblock (list_entry (list_pop_front (&sema->waiters),
+                         struct thread, elem));
+//thread_unblock (list_entry (list_remove(list_max(&sema->waiters, &compare_priority, NULL)),struct thread, elem));
+sema->value++; 
+preempt_thread(); 
+}
+else
+sema->value++; 
   intr_set_level (old_level);
 }
 
@@ -157,7 +176,6 @@ sema_test_helper (void *sema_)
       sema_up (&sema[1]);
     }
 }
-
 /* Initializes LOCK.  A lock can be held by at most a single
    thread at any given time.  Our locks are not "recursive", that
    is, it is an error for the thread currently holding a lock to
@@ -173,6 +191,19 @@ sema_test_helper (void *sema_)
    acquire and release it.  When these restrictions prove
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
+
+//struct lock_holder
+//{
+//int new_priority;
+//int old_priority;
+//struct thread *t;
+//struct lock waiting_for*;
+//struct list_elem hold_elem;
+//};
+
+//static struct list lock_holder_list;
+//static struct semaphore sema;
+
 void
 lock_init (struct lock *lock)
 {
@@ -180,7 +211,10 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+ // sema_init (&sema, 1);
+ // list_init (&lock_holder_list);
 }
+
 
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
@@ -195,10 +229,10 @@ lock_acquire (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
-  ASSERT (!lock_held_by_current_thread (lock));
-
+  ASSERT (!lock_held_by_current_thread (lock));  
+  lock_log(lock);
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  lock->holder = thread_current();  
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -229,9 +263,21 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  struct list_elem *e;
+  //struct lock_holder *holder;
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  /*for (e = list_begin (&lock_holder_list); e != list_end (&lock_holder_list); e = list_next (e))
+  {
+    if (list_entry(e, struct thread, elem) == thread_current())
+      break;
+  }
+  ASSERT (e != list_end(&lock_holder_list));
+ 
+  list_remove(e);
+  thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;
+  */
+  lock_rm_log(lock);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

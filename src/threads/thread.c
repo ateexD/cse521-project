@@ -28,6 +28,9 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List if lock holders */
+static struct list lock_holders;
+
 //static struct list sleep_list;
 
 /* Idle thread. */
@@ -73,6 +76,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 struct semaphore ready_sema;
+struct semaphore sema;
 struct semaphore create_sema;
 /*struct list * get_sleep_list ()
 {
@@ -80,6 +84,16 @@ struct semaphore create_sema;
 list_init (&sleep_list);
 return &sleep_list;
 }*/
+
+struct lock_holder
+{
+int old_priority;
+int new_priority;
+struct thread *held_by;
+struct thread *waiter;
+struct lock *lock;
+struct list_elem elem;
+};
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -102,8 +116,10 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  sema_init(&ready_sema, 1);
-  sema_init(&create_sema, 1);
+  list_init (&lock_holders);
+  sema_init (&ready_sema, 1);
+  sema_init (&create_sema, 1);
+  sema_init (&sema, 1);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -149,6 +165,173 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
+/*
+void 
+lock_log (struct thread *t, bool lock_held)
+{
+  //sema_down(&sema);
+  //struct lock_holder hold;// =  malloc(sizeof(struct lock_holder));
+  //struct list_elem *elem = malloc(sizeof(struct list_elem));
+  struct thread *cur = thread_current();
+  int swap_priority;
+  //hold->hold_elem=elem;
+  //hold->old_priority = cur->priority;
+  //holder->new_priority=thread_current()->priority;
+  //hold->t = cur;
+  //holder->waiting_for=lock;
+  //list_init(&lock_holder_list);
+  //printf("Lock held %d\n",lock_held);
+  if (lock_held)
+  {
+  if (t->priority < cur->priority)
+  {
+  //printf(t->tid);
+  swap_priority=t->priority;
+  t->priority=cur->priority;
+  t->old_priority=swap_priority;
+  sema_down(&ready_sema);
+  list_sort(&ready_list, &compare_priority, NULL);
+  sema_up(&ready_sema);
+  }
+  } 
+  sema_down(&sema);
+  list_push_back (&lock_holders, &cur->lock_elem);
+  sema_up(&sema);
+//list_sort(&ready_list, &compare_priority,NULL);
+}
+*/
+void
+lock_log (struct lock *l)
+{
+  //struct lock_holder *holder = malloc(sizeof(struct lock_holder));
+  struct thread *cur=thread_current();
+  if (l->holder != NULL)
+  {
+  if (l->holder->priority < cur->priority)
+  {
+  struct lock_holder *holder = malloc(sizeof(struct lock_holder));
+  struct list_elem *e;
+  //printf(t->tid);
+  holder->old_priority=l->holder->priority;
+  holder->waiter=cur;
+  l->holder->priority=cur->priority;
+  holder->new_priority=cur->priority;
+  holder->held_by=l->holder;
+  holder->lock=l;
+  int cnt=1;
+  struct thread *thread_itr=holder->held_by;
+  if (!list_empty(&lock_holders))
+  {
+  for (int i=0; i<8; i++)
+ {
+  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
+  { 
+  if (list_entry(e, struct lock_holder, elem)->waiter == thread_itr)
+   {list_entry(e, struct lock_holder, elem)->held_by->priority=holder->new_priority;
+   cnt++;
+   break;
+   } 
+  }
+  if (cnt == 2)
+  {
+//printf("1");
+thread_itr = list_entry(e, struct lock_holder, elem)->held_by;
+  cnt=1;
+  }
+  else
+  {break;} }}
+  sema_down(&ready_sema);
+  list_sort(&ready_list, &compare_priority, NULL);
+  sema_up(&ready_sema);
+  sema_down(&sema);
+  list_push_back (&lock_holders, &holder->elem);
+  sema_up(&sema);
+  }
+  }
+//list_sort(&ready_list, &compare_priority,NULL);
+}
+
+void lock_rm_log (struct lock *l)
+{ //sema_down(&sema);
+  struct list_elem *e;
+  int cnt=1;
+  int priority=0;
+  struct lock_holder *rem_elem;
+  if (!list_empty(&lock_holders))
+  {
+  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
+  {
+    if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
+      {
+      if(list_entry(e, struct lock_holder, elem)->lock == l)
+      {
+      //printf("2");
+      if (cnt == 1)
+      {
+      priority=list_entry(e, struct lock_holder, elem)->old_priority;
+      cnt++;
+      rem_elem=list_entry(e, struct lock_holder, elem);
+      }
+      sema_down(&sema);
+      list_remove(e);
+      sema_up(&sema);
+      }
+      else if (list_entry(e, struct lock_holder, elem)->old_priority>priority && cnt>1)
+      {
+      list_entry(e, struct lock_holder, elem)->old_priority=rem_elem->old_priority; 
+      cnt++;
+      //priority=thread_current()->priority;
+      break;      
+      }
+      //thread_current()->priority=priority;
+      }}
+      if (cnt == 2){
+      thread_current()->priority=priority;
+      }
+  //sema_up(&sema);
+  //ASSERT (e != list_end(&lock_holders));
+  //list_remove(e);
+}}
+/*
+void lock_rm_log (struct lock *l)
+{ //sema_down(&sema);
+  struct list_elem *e;
+  int max_priority=0;
+  struct list_elem rem_elem;
+  bool ctrl=false;
+  struct list_elem max_elem;
+  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
+  { 
+   if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
+    {
+     if (max_priority < list_entry(e, struct lock_holder, elem)->new_priority)
+      {
+      max_priority=list_entry(e, struct lock_holder, elem)->new_priority;
+      max_elem=e;}
+      if (list_entry(e, struct lock_holder, elem)->held_by == thread_current() && list_entry(e, struct lock_holder, elem)->lock == l)
+      {rem_elem=e;
+      sema_down(&sema);
+      list_remove(e);
+      sema_up(&sema);
+      ctrl=true;
+      }
+}}
+
+if (ctrl)
+{
+    if (max_priority > list_entry(rem_elem, struct lock_holder, elem)->new_priority)
+      {
+      //thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;
+      }
+    else{
+     thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;  
+}}
+  //sema_up(&sema);
+  //ASSERT (e != list_end(&lock_holders));
+  //list_remove(e);
+}
+*/
+
 
 /* Prints thread statistics. */
 void
@@ -379,10 +562,35 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+int cnt=1;
+struct list_elem *e;
+if (!list_empty(&lock_holders))
+  {
+  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
+  {
+  if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
+{
+if (list_entry(e, struct lock_holder, elem)->new_priority<new_priority)
+{
+list_entry(e, struct lock_holder, elem)->new_priority=new_priority;
+}
+if(list_entry(e, struct lock_holder, elem)->old_priority<new_priority )
+{
+list_entry(e, struct lock_holder, elem)->old_priority=new_priority;
+}
+if (list_entry(e, struct lock_holder, elem)->new_priority>new_priority && cnt==1)
+{
+list_entry(e, struct lock_holder, elem)->old_priority=new_priority;
+cnt++;
+}
+}
+}}
+if (cnt == 1)
+{
   thread_current ()->priority = new_priority;
   sema_down(&ready_sema);
   preempt_thread();
-  sema_up(&ready_sema);
+  sema_up(&ready_sema);}
 }
 
 
@@ -507,6 +715,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
+  t->old_priority=-1;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
