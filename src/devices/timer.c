@@ -220,7 +220,7 @@ timer_print_stats (void)
 }
 
 /* Wake up function that wakes up threads in 
- * sleeper list. */
+   sleeper list. */
 void
 wake_up ()
 {

@@ -118,7 +118,7 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
-bool compare_priority (struct list_elem *e1,struct list_elem *e2, void *aux);
+bool compare_priority (struct list_elem *e1, struct list_elem *e2, void *aux);
 void thread_block (void);
 void thread_unblock (struct thread *);
 void preempt_thread (void);
@@ -126,8 +126,10 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 void update_recent_cpu (void);
+void update_thread_recent_cpu (struct thread *t);
 void update_load_avg (void);
 void update_priorities (void);
+void update_thread_priority (struct thread *t);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
