@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/fixed_point.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -63,6 +64,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+static int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -120,11 +122,14 @@ thread_init (void)
   sema_init (&ready_sema, 1);
   sema_init (&create_sema, 1);
   sema_init (&sema, 1);
+  load_avg = 0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -150,7 +155,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
+  int k;
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -159,47 +164,15 @@ thread_tick (void)
     user_ticks++;
 #endif
   else
-    kernel_ticks++;
-
+   {
+       kernel_ticks++;
+       k= add_fixed_point_int (t->recent_cpu, 1);
+       t->recent_cpu = k;
+   }
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
-/*
-void 
-lock_log (struct thread *t, bool lock_held)
-{
-  //sema_down(&sema);
-  //struct lock_holder hold;// =  malloc(sizeof(struct lock_holder));
-  //struct list_elem *elem = malloc(sizeof(struct list_elem));
-  struct thread *cur = thread_current();
-  int swap_priority;
-  //hold->hold_elem=elem;
-  //hold->old_priority = cur->priority;
-  //holder->new_priority=thread_current()->priority;
-  //hold->t = cur;
-  //holder->waiting_for=lock;
-  //list_init(&lock_holder_list);
-  //printf("Lock held %d\n",lock_held);
-  if (lock_held)
-  {
-  if (t->priority < cur->priority)
-  {
-  //printf(t->tid);
-  swap_priority=t->priority;
-  t->priority=cur->priority;
-  t->old_priority=swap_priority;
-  sema_down(&ready_sema);
-  list_sort(&ready_list, &compare_priority, NULL);
-  sema_up(&ready_sema);
-  }
-  } 
-  sema_down(&sema);
-  list_push_back (&lock_holders, &cur->lock_elem);
-  sema_up(&sema);
-//list_sort(&ready_list, &compare_priority,NULL);
-}
-*/
 void
 lock_log (struct lock *l)
 {
@@ -292,46 +265,6 @@ void lock_rm_log (struct lock *l)
   //ASSERT (e != list_end(&lock_holders));
   //list_remove(e);
 }}
-/*
-void lock_rm_log (struct lock *l)
-{ //sema_down(&sema);
-  struct list_elem *e;
-  int max_priority=0;
-  struct list_elem rem_elem;
-  bool ctrl=false;
-  struct list_elem max_elem;
-  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
-  { 
-   if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
-    {
-     if (max_priority < list_entry(e, struct lock_holder, elem)->new_priority)
-      {
-      max_priority=list_entry(e, struct lock_holder, elem)->new_priority;
-      max_elem=e;}
-      if (list_entry(e, struct lock_holder, elem)->held_by == thread_current() && list_entry(e, struct lock_holder, elem)->lock == l)
-      {rem_elem=e;
-      sema_down(&sema);
-      list_remove(e);
-      sema_up(&sema);
-      ctrl=true;
-      }
-}}
-
-if (ctrl)
-{
-    if (max_priority > list_entry(rem_elem, struct lock_holder, elem)->new_priority)
-      {
-      //thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;
-      }
-    else{
-     thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;  
-}}
-  //sema_up(&sema);
-  //ASSERT (e != list_end(&lock_holders));
-  //list_remove(e);
-}
-*/
-
 
 /* Prints thread statistics. */
 void
@@ -393,6 +326,16 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+  if (thread_mlfqs)
+  {
+     if (tid > 1)
+     {
+       t->nice = thread_get_nice ();
+       t->recent_cpu = thread_current()->recent_cpu;
+       update_thread_priority (t);
+     }
+
+   }
   sema_up(&create_sema);
   thread_unblock (t);
     /* Add to run queue. */
@@ -400,7 +343,6 @@ thread_create (const char *name, int priority,
   preempt_thread();
   sema_up(&ready_sema);
   return tid;
-  // sema_up (&create_sema);
 }
 
 //Adding compare function
@@ -600,38 +542,42 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
  }
-
 /* Sets the current thread's nice value to NICE. */
-void
-thread_set_nice (int nice UNUSED) 
-{
-  /* Not yet implemented. */
-}
+ void
+ thread_set_nice (int nice)
+ {
+   //printf ("Nice in f%d", nice);
+   struct thread *t = thread_current();
+   t->nice = nice;
+   update_thread_recent_cpu (t);
+   update_thread_priority (t);
+   // list_sort (&ready_list, &compare_priority, NULL);
+   sema_down(&ready_sema);
+   preempt_thread ();
+   sema_up(&ready_sema);
+ }
 
-/* Returns the current thread's nice value. */
-int
-thread_get_nice (void) 
-{
-  /* Not yet implemented. */
-  return 0;
-}
+ /* Returns the current thread's nice value. */
+ int
+ thread_get_nice (void)
+ {
+   return thread_current()->nice;
+ }
 
-/* Returns 100 times the system load average. */
-int
-thread_get_load_avg (void) 
-{
-  /* Not yet implemented. */
-  return 0;
-}
+ /* Returns 100 times the system load average. */
+ int
+ thread_get_load_avg (void)
+ {
+   return round_off(mult_fixed_point_int (load_avg, 100));
+ }
 
-/* Returns 100 times the current thread's recent_cpu value. */
-int
-thread_get_recent_cpu (void) 
-{
-  /* Not yet implemented. */
-  return 0;
-}
-
+ /* Returns 100 times the current thread's recent_cpu value. */
+ int
+ thread_get_recent_cpu (void)
+ {
+   return round_off(mult_fixed_point_int ((thread_current ()->recent_cpu), 100));
+ }
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -837,7 +783,74 @@ allocate_tid (void)
 
   return tid;
 }
-
+void update_thread_recent_cpu (struct thread *t)
+ {
+   int recent_cpu_ = t->recent_cpu;
+   int ratio1 = div (mult_fixed_point_int (load_avg, 2), add_fixed_point_int (mult_fixed_point_int (load_avg, 2), 1));
+   ratio1 = mult (ratio1, recent_cpu_);
+   t->recent_cpu = add_fixed_point_int (ratio1, t->nice);
+ }
+ void update_thread_priority (struct thread *t)
+ {
+   int old_level = intr_disable ();
+   if (t == idle_thread)
+        return;
+    int recent_cpu_new = t->recent_cpu;
+    int temp = div_fixed_point_int (recent_cpu_new, 4);
+    recent_cpu_new = round_off (temp);
+    //printf ("Nice %d\n", t->nice);
+    // printf ("rcpu %d\n", recent_cpu_new);
+    t->priority = PRI_MAX - recent_cpu_new  - (t->nice * 2);
+    if (t->priority < PRI_MIN)
+        t->priority = PRI_MIN;
+    else if (t->priority > PRI_MAX)
+        t->priority = PRI_MAX;
+    intr_set_level (old_level);
+    // list_sort (&ready_list, compare_priority, NULL);
+    // printf ("Here \n");
+    // preempt_thread();
+ }
+void update_priorities()
+ {
+   struct list_elem *e;
+   struct thread *t;
+   if (!list_empty (&all_list))
+   {
+   for (e = list_front (&all_list); e != list_end (&all_list); e = list_next(e))
+   {
+       t = list_entry (e, struct thread, allelem);
+       update_thread_priority (t);
+   }
+   list_sort (&ready_list, compare_priority, NULL);
+   }
+ }
+ void update_recent_cpu ()
+ {
+   struct list_elem *e;
+   struct thread *t;
+   if (!list_empty (&all_list))
+     {
+       for (e = list_front (&all_list); e != list_end (&all_list); e = list_next(e))
+       {
+         t = list_entry (e, struct thread, allelem);
+         update_thread_recent_cpu (t);
+       }
+     }
+ }
+void update_load_avg ()
+ {
+     int ratio1 = div (int_to_fixed_point (59),  int_to_fixed_point (60));
+     int ratio2 = div (int_to_fixed_point (1),  int_to_fixed_point (60));
+     int ready_threads;
+     if (thread_current() != idle_thread)
+         ready_threads = list_size (&ready_list) + 1;
+     else
+         ready_threads = list_size (&ready_list);
+     // printf ("%d %d %d\n", ratio1, ratio2, round_off (load_avg));
+     // printf("%d \n",ready_threads);
+     int temp = add (mult (ratio1, load_avg), mult_fixed_point_int (ratio2, ready_threads));
+     load_avg = temp;
+ }
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);

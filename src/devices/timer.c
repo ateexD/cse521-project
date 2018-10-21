@@ -247,6 +247,16 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+     if (thread_mlfqs)
+   {  //printf("%d \n",ticks);
+   if (ticks % (TIMER_FREQ) == 0)
+   {
+       update_load_avg ();
+       update_recent_cpu ();
+   }
+   if (ticks % 4 == 0)
+       update_priorities ();
+   }
   wake_up();
   thread_tick ();
 }

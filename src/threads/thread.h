@@ -88,6 +88,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int nice;                           /* Nice value. */
+    int recent_cpu;                     /* Recent CPU. */
     int old_priority;                   /* Priority stored for restore in priority donation. */
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem lock_elem;
@@ -123,7 +125,9 @@ void preempt_thread (void);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
-
+void update_recent_cpu (void);
+void update_load_avg (void);
+void update_priorities (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
