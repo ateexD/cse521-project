@@ -145,8 +145,8 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void lock_log(struct lock *);
-void lock_rm_log(struct lock *);
+void log_donation (struct lock *);
+void remove_donation_log (struct lock *);
 //struct list * get_sleep_list(void);
 
 #endif /* threads/thread.h */
