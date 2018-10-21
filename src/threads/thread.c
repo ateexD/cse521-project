@@ -875,6 +875,7 @@ update_recent_cpu ()
     }
   }
 }
+
 /* This function updates load_avg at every multiple of a second and is also called by the
  * timer_interrupt (). */
 void 
@@ -894,7 +895,8 @@ update_load_avg ()
 
   int temp = add (mult (ratio1, load_avg), mult_fixed_point_int (ratio2, ready_threads));
   load_avg = temp;
- }
+}
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
