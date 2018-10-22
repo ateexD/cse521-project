@@ -875,9 +875,8 @@ update_recent_cpu ()
     }
   }
 }
-
 /* This function updates load_avg at every multiple of a second and is also called by the
- * timer_interrupt (). */
+   timer_interrupt (). */
 void 
 update_load_avg ()
 {
