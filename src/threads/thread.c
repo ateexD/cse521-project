@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/fixed_point.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -8,6 +9,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -20,6 +22,9 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+/* Maximum depth of priority chain donation. */
+#define MAX_DEPTH 8
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -28,10 +33,8 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
-/* List if lock holders */
-static struct list lock_holders;
-
-//static struct list sleep_list;
+/* List of lock holders that have received a priority donation. */
+static struct list donation_lock_holders;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -64,6 +67,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+/* Load Average of MLFQS Scheduler. */
+static int load_avg;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -75,16 +81,17 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+/* Semaphore to control access to ready list. */
 struct semaphore ready_sema;
-struct semaphore sema;
+
+/* Semaphore to control access to priority donation logs. */
+struct semaphore donation_log_sema;
+
+/* Semaphore to control access to thread_create(). */
 struct semaphore create_sema;
-/*struct list * get_sleep_list ()
-{
 
-list_init (&sleep_list);
-return &sleep_list;
-}*/
-
+/* Priority donation log struct. */
 struct lock_holder
 {
 int old_priority;
@@ -116,15 +123,19 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init (&lock_holders);
+  list_init (&donation_lock_holders);
   sema_init (&ready_sema, 1);
   sema_init (&create_sema, 1);
-  sema_init (&sema, 1);
+  sema_init (&donation_log_sema, 1);
+  load_avg = 0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  /* Nice and Recent CPU of init is 0. */
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -150,7 +161,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
+  int k;
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -159,179 +170,18 @@ thread_tick (void)
     user_ticks++;
 #endif
   else
-    kernel_ticks++;
-
+   {
+       kernel_ticks++;
+       if (thread_mlfqs)
+       {
+         k = add_fixed_point_int (t->recent_cpu, 1);
+         t->recent_cpu = k;
+       }
+   }
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
-/*
-void 
-lock_log (struct thread *t, bool lock_held)
-{
-  //sema_down(&sema);
-  //struct lock_holder hold;// =  malloc(sizeof(struct lock_holder));
-  //struct list_elem *elem = malloc(sizeof(struct list_elem));
-  struct thread *cur = thread_current();
-  int swap_priority;
-  //hold->hold_elem=elem;
-  //hold->old_priority = cur->priority;
-  //holder->new_priority=thread_current()->priority;
-  //hold->t = cur;
-  //holder->waiting_for=lock;
-  //list_init(&lock_holder_list);
-  //printf("Lock held %d\n",lock_held);
-  if (lock_held)
-  {
-  if (t->priority < cur->priority)
-  {
-  //printf(t->tid);
-  swap_priority=t->priority;
-  t->priority=cur->priority;
-  t->old_priority=swap_priority;
-  sema_down(&ready_sema);
-  list_sort(&ready_list, &compare_priority, NULL);
-  sema_up(&ready_sema);
-  }
-  } 
-  sema_down(&sema);
-  list_push_back (&lock_holders, &cur->lock_elem);
-  sema_up(&sema);
-//list_sort(&ready_list, &compare_priority,NULL);
-}
-*/
-void
-lock_log (struct lock *l)
-{
-  //struct lock_holder *holder = malloc(sizeof(struct lock_holder));
-  struct thread *cur=thread_current();
-  if (l->holder != NULL)
-  {
-  if (l->holder->priority < cur->priority)
-  {
-  struct lock_holder *holder = malloc(sizeof(struct lock_holder));
-  struct list_elem *e;
-  //printf(t->tid);
-  holder->old_priority=l->holder->priority;
-  holder->waiter=cur;
-  l->holder->priority=cur->priority;
-  holder->new_priority=cur->priority;
-  holder->held_by=l->holder;
-  holder->lock=l;
-  int cnt=1;
-  struct thread *thread_itr=holder->held_by;
-  if (!list_empty(&lock_holders))
-  {
-  for (int i=0; i<8; i++)
- {
-  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
-  { 
-  if (list_entry(e, struct lock_holder, elem)->waiter == thread_itr)
-   {list_entry(e, struct lock_holder, elem)->held_by->priority=holder->new_priority;
-   cnt++;
-   break;
-   } 
-  }
-  if (cnt == 2)
-  {
-//printf("1");
-thread_itr = list_entry(e, struct lock_holder, elem)->held_by;
-  cnt=1;
-  }
-  else
-  {break;} }}
-  sema_down(&ready_sema);
-  list_sort(&ready_list, &compare_priority, NULL);
-  sema_up(&ready_sema);
-  sema_down(&sema);
-  list_push_back (&lock_holders, &holder->elem);
-  sema_up(&sema);
-  }
-  }
-//list_sort(&ready_list, &compare_priority,NULL);
-}
-
-void lock_rm_log (struct lock *l)
-{ //sema_down(&sema);
-  struct list_elem *e;
-  int cnt=1;
-  int priority=0;
-  struct lock_holder *rem_elem;
-  if (!list_empty(&lock_holders))
-  {
-  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
-  {
-    if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
-      {
-      if(list_entry(e, struct lock_holder, elem)->lock == l)
-      {
-      //printf("2");
-      if (cnt == 1)
-      {
-      priority=list_entry(e, struct lock_holder, elem)->old_priority;
-      cnt++;
-      rem_elem=list_entry(e, struct lock_holder, elem);
-      }
-      sema_down(&sema);
-      list_remove(e);
-      sema_up(&sema);
-      }
-      else if (list_entry(e, struct lock_holder, elem)->old_priority>priority && cnt>1)
-      {
-      list_entry(e, struct lock_holder, elem)->old_priority=rem_elem->old_priority; 
-      cnt++;
-      //priority=thread_current()->priority;
-      break;      
-      }
-      //thread_current()->priority=priority;
-      }}
-      if (cnt == 2){
-      thread_current()->priority=priority;
-      }
-  //sema_up(&sema);
-  //ASSERT (e != list_end(&lock_holders));
-  //list_remove(e);
-}}
-/*
-void lock_rm_log (struct lock *l)
-{ //sema_down(&sema);
-  struct list_elem *e;
-  int max_priority=0;
-  struct list_elem rem_elem;
-  bool ctrl=false;
-  struct list_elem max_elem;
-  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
-  { 
-   if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
-    {
-     if (max_priority < list_entry(e, struct lock_holder, elem)->new_priority)
-      {
-      max_priority=list_entry(e, struct lock_holder, elem)->new_priority;
-      max_elem=e;}
-      if (list_entry(e, struct lock_holder, elem)->held_by == thread_current() && list_entry(e, struct lock_holder, elem)->lock == l)
-      {rem_elem=e;
-      sema_down(&sema);
-      list_remove(e);
-      sema_up(&sema);
-      ctrl=true;
-      }
-}}
-
-if (ctrl)
-{
-    if (max_priority > list_entry(rem_elem, struct lock_holder, elem)->new_priority)
-      {
-      //thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;
-      }
-    else{
-     thread_current()->priority=list_entry(e, struct lock_holder, elem)->old_priority;  
-}}
-  //sema_up(&sema);
-  //ASSERT (e != list_end(&lock_holders));
-  //list_remove(e);
-}
-*/
-
 
 /* Prints thread statistics. */
 void
@@ -360,8 +210,6 @@ tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
-  sema_down (&create_sema);
-  //int old_level = intr_disable();
   struct thread *t;
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
@@ -393,26 +241,36 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-  sema_up(&create_sema);
+  if (thread_mlfqs)
+  {
+     if (tid > 1)
+     {
+       /* If not init thread, inherit nice and recent_cpu 
+        * from parent thread. */
+       t->nice = thread_get_nice ();
+       t->recent_cpu = thread_current()->recent_cpu;
+       /* Initialize priority based on inherited values. */
+       update_thread_priority (t);
+     }
+
+   }
   thread_unblock (t);
-    /* Add to run queue. */
+  /* Add to ready queue. Down ready_sema 
+   * to access ready_list. */
   sema_down(&ready_sema);
   preempt_thread();
   sema_up(&ready_sema);
   return tid;
-  // sema_up (&create_sema);
 }
 
-//Adding compare function
+/* Boolean comparator function to compare priorities when inserting 
+ * in ordered fashion or sorting. */
 bool
-compare_priority (struct list_elem *e1,struct list_elem *e2, void *aux)
+compare_priority (struct list_elem *e1, struct list_elem *e2, void *aux UNUSED)
 {
- struct thread *s1 = list_entry(e1,struct thread,elem);
- struct thread *s2 = list_entry(e2,struct thread,elem);
-if ((s1->priority)>(s2->priority))
-   return true;
- else
-   return false;
+ struct thread *s1 = list_entry(e1, struct thread, elem);
+ struct thread *s2 = list_entry(e2, struct thread, elem);
+ return  s1->priority > s2->priority;
 }
 
 
@@ -449,19 +307,24 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  /* Adding `t` based on priority for next_thread_to_run. */
   list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
-void preempt_thread()
+
+/* This function checks if the current thread has the highest priority
+ * amongst ready threads, if not, yields CPU accordingly or else continues
+ * to run. */
+void
+preempt_thread()
 {
-    
-    if (!list_empty(&ready_list) && thread_current() != idle_thread)
-    {
-        int priority = list_entry(list_front(&ready_list), struct thread, elem) -> priority;
-        if (priority > thread_current()->priority)
-          thread_yield();
-    }
+  if (!list_empty(&ready_list) && thread_current() != idle_thread)
+  {
+    int priority = list_entry(list_front(&ready_list), struct thread, elem) -> priority;
+    if (priority > thread_current()->priority)
+      thread_yield();
+  }
 }
 /* Returns the name of the running thread. */
 const char *
@@ -525,14 +388,13 @@ thread_yield (void)
 {
   struct thread *cur = thread_current ();
   enum intr_level old_level;
-  // list_push_back (&ready_list, &cur->elem);
  
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-  /* Adding ordered ready list*/ 
   {
+    /* Adding in ordered fashion to ready_list*/ 
     list_insert_ordered(&ready_list, &cur->elem, compare_priority, NULL);
   }
   cur->status = THREAD_READY;
@@ -562,35 +424,39 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-int cnt=1;
-struct list_elem *e;
-if (!list_empty(&lock_holders))
+  int cnt=1;
+  struct list_elem *e;
+
+  /* Ensures that priority is not set if a thread had received a higher priority
+     from a donation earlier. Updates donation_lock_holders to ensure priority
+     is set to NEW_PRIORITY only when it releases the lock. */
+  if (!list_empty(&donation_lock_holders))
   {
-  for (e = list_begin (&lock_holders); e != list_end (&lock_holders); e = list_next (e))
+    for (e = list_begin (&donation_lock_holders); e != list_end (&donation_lock_holders); e = list_next (e))
+    {
+      if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
+      {
+        if (list_entry(e, struct lock_holder, elem)->new_priority < new_priority)
+          list_entry(e, struct lock_holder, elem)->new_priority = new_priority;
+        
+        if(list_entry(e, struct lock_holder, elem)->old_priority < new_priority)
+          list_entry(e, struct lock_holder, elem)->old_priority = new_priority;
+        
+        if (list_entry(e, struct lock_holder, elem)->new_priority > new_priority && cnt == 1)
+        {
+          list_entry(e, struct lock_holder, elem)->old_priority = new_priority;
+          cnt++;
+        }
+      }
+    }
+  }
+  if (cnt == 1)
   {
-  if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
-{
-if (list_entry(e, struct lock_holder, elem)->new_priority<new_priority)
-{
-list_entry(e, struct lock_holder, elem)->new_priority=new_priority;
-}
-if(list_entry(e, struct lock_holder, elem)->old_priority<new_priority )
-{
-list_entry(e, struct lock_holder, elem)->old_priority=new_priority;
-}
-if (list_entry(e, struct lock_holder, elem)->new_priority>new_priority && cnt==1)
-{
-list_entry(e, struct lock_holder, elem)->old_priority=new_priority;
-cnt++;
-}
-}
-}}
-if (cnt == 1)
-{
-  thread_current ()->priority = new_priority;
-  sema_down(&ready_sema);
-  preempt_thread();
-  sema_up(&ready_sema);}
+    thread_current ()->priority = new_priority;
+    sema_down(&ready_sema);
+    preempt_thread();
+    sema_up(&ready_sema);
+  }
 }
 
 
@@ -601,37 +467,140 @@ thread_get_priority (void)
   return thread_current ()->priority;
  }
 
-/* Sets the current thread's nice value to NICE. */
+/* Donates priority to lock holder to a lock current thread is trying
+   to access, if the lock holders priority is lower than the current
+   thread's priority. Also keeps a list to track all donations. */
 void
-thread_set_nice (int nice UNUSED) 
+log_donation (struct lock *l)
 {
-  /* Not yet implemented. */
+  struct thread *cur=thread_current();
+  if (l->holder != NULL)
+  {
+    if (l->holder->priority < cur->priority)
+    {
+      struct lock_holder *holder = malloc(sizeof(struct lock_holder));
+      struct list_elem *e;
+      holder->old_priority = l->holder->priority;
+      holder->waiter = cur;
+      l->holder->priority = cur->priority;
+      holder->new_priority = cur->priority;
+      holder->held_by = l->holder;
+      holder->lock = l;
+      int cnt=1;
+      struct thread *thread_itr = holder->held_by;
+      if (!list_empty(&donation_lock_holders))
+      {
+        for (int i=0; i < MAX_DEPTH; i++)
+        {
+          for (e = list_begin (&donation_lock_holders); e != list_end (&donation_lock_holders); e = list_next (e))
+          { 
+            if (list_entry(e, struct lock_holder, elem)->waiter == thread_itr)
+              {
+                list_entry(e, struct lock_holder, elem)->held_by->priority = holder->new_priority;
+                cnt++;
+                break;
+              } 
+          }
+        if (cnt == 2)
+        {
+          thread_itr = list_entry(e, struct lock_holder, elem)->held_by;
+          cnt=1;
+        }
+        else
+          break; 
+        }
+      }
+    sema_down (&ready_sema);
+    list_sort (&ready_list, &compare_priority, NULL);
+    sema_up (&ready_sema);
+    sema_down (&donation_log_sema);
+    list_push_back (&donation_lock_holders, &holder->elem);
+    sema_up (&donation_log_sema);
+   }
+ }
 }
 
-/* Returns the current thread's nice value. */
-int
-thread_get_nice (void) 
-{
-  /* Not yet implemented. */
-  return 0;
+/* Resets priority of the lock holder, once it releases the lock, if 
+   it had received donation from another thread, ensuring that priority is
+   reset only if it had not received a higher priority donation from another
+   thread. */
+void remove_donation_log (struct lock *l)
+{ 
+  struct list_elem *e;
+  int cnt=1;
+  int priority=0;
+  struct lock_holder *rem_elem;
+  if (!list_empty(&donation_lock_holders))
+  {
+    for (e = list_begin (&donation_lock_holders); e != list_end (&donation_lock_holders); e = list_next (e))
+    {
+      if (list_entry(e, struct lock_holder, elem)->held_by == thread_current())
+      {
+        if(list_entry(e, struct lock_holder, elem)->lock == l)
+        {
+          if (cnt == 1)
+          {
+            priority=list_entry(e, struct lock_holder, elem)->old_priority;
+            cnt++;
+            rem_elem=list_entry(e, struct lock_holder, elem);
+          }
+          sema_down(&donation_log_sema);
+          list_remove(e);
+          sema_up(&donation_log_sema);
+        }
+          else if (list_entry(e, struct lock_holder, elem)->old_priority>priority && cnt>1)
+          {
+            list_entry(e, struct lock_holder, elem)->old_priority=rem_elem->old_priority; 
+            cnt++;
+            break;      
+          }
+        }
+      }
+      if (cnt == 2)
+      {
+      thread_current()->priority=priority;
+      }
+   }
 }
 
-/* Returns 100 times the system load average. */
-int
-thread_get_load_avg (void) 
-{
-  /* Not yet implemented. */
-  return 0;
-}
+/* Sets the current thread's nice value to NICE. */
+ void
+ thread_set_nice (int nice)
+ {
+   struct thread *t = thread_current();
+   /* Set nice to current thread's context */
+   t->nice = nice;
+   /* Update recent_cpu and priority of thread as they are
+    * dependant on the nice value. */
+   update_thread_recent_cpu (t);
+   update_thread_priority (t);
+   /* Preempt current thread if needed. */
+   sema_down(&ready_sema);
+   preempt_thread ();
+   sema_up(&ready_sema);
+ }
 
-/* Returns 100 times the current thread's recent_cpu value. */
-int
-thread_get_recent_cpu (void) 
-{
-  /* Not yet implemented. */
-  return 0;
-}
-
+ /* Returns the current thread's nice value. */
+ int
+ thread_get_nice (void)
+ {
+   return thread_current()->nice;
+ }
+
+ /* Returns 100 times the system load average. */
+ int
+ thread_get_load_avg (void)
+ {
+   return round_off(mult_fixed_point_int (load_avg, 100));
+ }
+
+ /* Returns 100 times the current thread's recent_cpu value. */
+ int
+ thread_get_recent_cpu (void)
+ {
+   return round_off(mult_fixed_point_int ((thread_current ()->recent_cpu), 100));
+ }
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -680,7 +649,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -747,12 +716,10 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
- // sema_down(&ready_sema);
   if (list_empty (&ready_list))
     return idle_thread;
   else
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
- // sema_up(&ready_sema);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -837,7 +804,98 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+/* Updates thread_recent_cpu for a given thread context. */
+void 
+update_thread_recent_cpu (struct thread *t)
+{
+  int recent_cpu_ = t->recent_cpu;
+  /* Compute 2 * load_avg */
+  int load_avg_2x = mult_fixed_point_int (load_avg, 2);
+  /* Compute ratio - (load_avg_2x) / (load_avg_2x + 1) to 
+   * avoid overflow. */
+  int ratio1 = div (load_avg_2x, add_fixed_point_int (load_avg_2x, 1));
+  ratio1 = mult (ratio1, recent_cpu_);
+  t->recent_cpu = add_fixed_point_int (ratio1, t->nice);
+}
+
+/* Updates thread priority for given thread context and is
+ * used when nice value of a thread is altered. */
+void 
+update_thread_priority (struct thread *t)
+{
+  /* Priority is not computed for idle thread. */
+  if (t == idle_thread)
+    return;
+  /* Update priority as PRI_MAX - (recent_cpu / 4) - 2 * nice */
+  int recent_cpu_new = t->recent_cpu;
+  int temp = div_fixed_point_int (recent_cpu_new, 4);
+  recent_cpu_new = round_off (temp);
+  t->priority = PRI_MAX - recent_cpu_new  - (t->nice << 1);
+
+  /* Clamp priorities between PRI_MIN and PRI_MAX if needed. */
+  if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
+  else if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+}
+
+/* This function updates priorities for all threads and is called every 4 ticks by 
+ * timer_interrupt () and no one else. */
+void 
+update_priorities()
+{
+  struct list_elem *e;
+  struct thread *t;
+  if (!list_empty (&all_list))
+  {
+    for (e = list_front (&all_list); e != list_end (&all_list); e = list_next(e))
+    {
+      t = list_entry (e, struct thread, allelem);
+      update_thread_priority (t);
+    }
+    /* Sort ready_list after priorities have been altered.  */
+    list_sort (&ready_list, compare_priority, NULL);
+  }
+}
+
+/* This function updates recent_cpu of all threads at every multiple of a second and 
+ * is called by the timer_interrupt () and by no other function. */  
+void 
+update_recent_cpu ()
+{
+  struct list_elem *e;
+  struct thread *t;
+  if (!list_empty (&all_list))
+  {
+    for (e = list_front (&all_list); e != list_end (&all_list); e = list_next(e))
+    {
+      t = list_entry (e, struct thread, allelem);
+      update_thread_recent_cpu (t);
+    }
+  }
+}
+/* This function updates load_avg at every multiple of a second and is also called by the
+   timer_interrupt (). */
+void 
+update_load_avg ()
+{
+  /* Ratio (59 / 60) and (1 / 60) are computed. */
+  int ratio1 = div (int_to_fixed_point (59),  int_to_fixed_point (60));
+  int ratio2 = div (int_to_fixed_point (1),  int_to_fixed_point (60));
+  
+  /* ready_threads is the number of threads in ready_list and the 
+   * current thread if it is not the idle thread. */
+  int ready_threads;
+  if (thread_current() != idle_thread)
+    ready_threads = list_size (&ready_list) + 1;
+  else
+    ready_threads = list_size (&ready_list);
+
+  int temp = add (mult (ratio1, load_avg), mult_fixed_point_int (ratio2, ready_threads));
+  load_avg = temp;
+}
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);

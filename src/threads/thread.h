@@ -88,6 +88,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int nice;                           /* Nice value. */
+    int recent_cpu;                     /* Recent CPU. */
     int old_priority;                   /* Priority stored for restore in priority donation. */
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem lock_elem;
@@ -116,14 +118,18 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
-bool compare_priority (struct list_elem *e1,struct list_elem *e2, void *aux);
+bool compare_priority (struct list_elem *e1, struct list_elem *e2, void *aux);
 void thread_block (void);
 void thread_unblock (struct thread *);
 void preempt_thread (void);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
-
+void update_recent_cpu (void);
+void update_thread_recent_cpu (struct thread *t);
+void update_load_avg (void);
+void update_priorities (void);
+void update_thread_priority (struct thread *t);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
@@ -141,8 +147,8 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void lock_log(struct lock *);
-void lock_rm_log(struct lock *);
+void log_donation (struct lock *);
+void remove_donation_log (struct lock *);
 //struct list * get_sleep_list(void);
 
 #endif /* threads/thread.h */
