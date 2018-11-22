@@ -508,10 +508,10 @@ setup_stack (void **esp, char *file_name, char *file_args)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
      if (success)
-        {//printf("No probs here\n");
+        {
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
         printf("%x ESP \n", *esp);
-        hex_dump(PHYS_BASE-256, PHYS_BASE-256, 256, true);
+        hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
         }
       else
         palloc_free_page (kpage);
