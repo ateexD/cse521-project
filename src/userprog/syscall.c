@@ -20,11 +20,12 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  printf("\n\n");
+ // printf("\n\n");
   int *esp = f->esp;
+ // printf("%x\n", esp);
   int syscall_num = *esp;
   int b = 100;
-  hex_dump(f - b, f - b, 300, true);
+ // hex_dump(esp,  esp, 256, true);
   
   if (syscall_num == SYS_EXIT)
       exit (0);
@@ -37,11 +38,11 @@ syscall_handler (struct intr_frame *f)
     int fd = *++esp;
     void* buffer = *++esp;
     unsigned size = *++esp;
-    write(fd, buffer, size); 
+    f->eax = write(fd, buffer, size); 
   }
 
   //printf ("system call!\n");
-  thread_exit ();
+//  thread_exit ();
 }
 
 void exit(int status)
@@ -50,18 +51,17 @@ void exit(int status)
 }
 int write(int fd, const void *buffer, unsigned size)
 {
-  printf("FD - %d, buffer - %s, size - %u\n\n", fd, buffer, size);
-  printf("sizeof - %d\n", sizeof buffer);
-  lock_acquire(&file_system_lock);
+//  printf("FD - %d, buffer - %s, size - %u\n\n", fd, buffer, size);
+//  printf("sizeof - %d\n", sizeof buffer);
+//  lock_acquire(&file_system_lock);
    
   if(buffer == NULL)
     return -1;
   
   if (fd == 1)
-    putbuf(buffer + 5, size);
- 
-  lock_release(&file_system_lock);
-  return 1;
+    putbuf(buffer, size);
+//  lock_release(&file_system_lock);
+  return size;
 }
 void halt()
 {

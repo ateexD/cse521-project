@@ -88,6 +88,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  printf("You stuck here");
   while(1);
   return -1;
 }
@@ -461,7 +462,7 @@ esp++;
 }
 esp = itr - pad - 4;
 int intr;
-printf("%x\n", itr);
+//printf("%x\n", itr);
 for (int i=0; i<argv+1; i++)
 {
 intr=itr;
@@ -510,8 +511,8 @@ setup_stack (void **esp, char *file_name, char *file_args)
      if (success)
         {
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-        printf("%x ESP \n", *esp);
-        hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
+        //printf("%x ESP \n", *esp);
+        //hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
         }
       else
         palloc_free_page (kpage);
