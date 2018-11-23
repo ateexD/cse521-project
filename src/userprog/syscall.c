@@ -214,7 +214,6 @@ read_sys(int *esp)
   int fd = *(esp + 1);
   char *buffer = *(esp + 2);
   unsigned size = *(esp + 3);
-  lock_acquire(&file_system_lock);
   if (fd == 0)
   {
     int i = 0;
@@ -227,7 +226,6 @@ read_sys(int *esp)
       return -1;
   int actual_size = file_read(fm->f, buffer, size);
   buffer[actual_size] = '\0';
-  lock_release(&file_system_lock);
   return actual_size;
 }
 
