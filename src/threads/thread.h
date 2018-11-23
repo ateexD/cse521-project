@@ -149,6 +149,7 @@ int thread_get_load_avg (void);
 
 void log_donation (struct lock *);
 void remove_donation_log (struct lock *);
+struct thread *get_thread(int tid);
 //struct list * get_sleep_list(void);
 
 #endif /* threads/thread.h */

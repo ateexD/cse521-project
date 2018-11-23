@@ -82,6 +82,27 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+struct thread *get_thread(int tid)
+{
+  struct list_elem *e;
+  //printf("Atee here");
+   enum intr_level old_level;
+  
+  ASSERT (!intr_context ());
+
+  old_level = intr_disable ();
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
+  {
+    struct thread *t = list_entry (e, struct thread, allelem);
+    if(t->tid == tid){
+      intr_set_level (old_level);//printf("\n FOUND \n");
+      return t;
+    }
+  }
+  intr_set_level (old_level);
+  return NULL;
+}
+
 /* Semaphore to control access to ready list. */
 struct semaphore ready_sema;
 

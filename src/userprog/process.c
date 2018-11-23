@@ -88,9 +88,19 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  printf("You stuck here");
-  while(1);
-  return -1;
+  struct thread *t; // = get_thread(child_tid);
+
+  if((child_tid == TID_ERROR)) // || t == NULL)
+    return -1;
+ // printf("Before while loop, t->status = %d \n",t->status);
+
+ // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
+//	(t->status == THREAD_BLOCKED)) // || (t->status == THREAD_DYING))
+//	;
+  while((t=get_thread(child_tid)) != NULL)
+	;
+//  printf("Inside process_wait\n");
+  return 0;
 }
 
 /* Free the current process's resources. */
