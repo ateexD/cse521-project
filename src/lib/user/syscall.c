@@ -1,6 +1,6 @@
 #include <syscall.h>
 #include "../syscall-nr.h"
-
+#include "threads/vaddr.h"
 /* Invokes syscall NUMBER, passing no arguments, and returns the
    return value as an `int'. */
 #define syscall0(NUMBER)                                        \
@@ -64,6 +64,7 @@
 void
 halt (void) 
 {
+//  hex_dump(PHYS_BASE - 128, PHYS_BASE - 128, 128, true);
   syscall0 (SYS_HALT);
   NOT_REACHED ();
 }
@@ -78,6 +79,7 @@ exit (int status)
 pid_t
 exec (const char *file)
 {
+//  hex_dump(PHYS_BASE - 128, PHYS_BASE - 128, 128, true);
   return (pid_t) syscall1 (SYS_EXEC, file);
 }
 
@@ -90,6 +92,7 @@ wait (pid_t pid)
 bool
 create (const char *file, unsigned initial_size)
 {
+//  hex_dump(PHYS_BASE - 128, PHYS_BASE - 128, 128, true);
   return syscall2 (SYS_CREATE, file, initial_size);
 }
 

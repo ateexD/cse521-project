@@ -19,7 +19,7 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (char *cmdline, void (**eip) (void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,13 +30,25 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+/*  
+  const char *temp ="hello world";
+  char *save_ptr1;
+  char *tok = strtok_r (temp, " ", &save_ptr1);
+  printf("%s %s \n", temp, tok);
+*/
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+/*
+char *p_nm;
+  strcpy(p_nm, file_name);
+  char *save_ptr1;
+  char *tok = strtok_r (p_nm, " ", &save_ptr1);
+  printf("*****%s %s \n", p_nm, tok);
+*/
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
@@ -59,13 +71,16 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
 
+  
+  //intr_dump_frame(&if_);
+  success = load (file_name, &if_.eip, &if_.esp);
+  //intr_dump_frame(&if_);
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
-
+//printf("HERE : %x\n",if_.esp);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -82,13 +97,24 @@ start_process (void *file_name_)
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
    immediately, without waiting.
-
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  struct thread *t; // = get_thread(child_tid);
+
+  if((child_tid == TID_ERROR)) // || t == NULL)
+    return -1;
+ // printf("Before while loop, t->status = %d \n",t->status);
+
+ // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
+//	(t->status == THREAD_BLOCKED)) // || (t->status == THREAD_DYING))
+//	;
+  while((t=get_thread(child_tid)) != NULL)
+	;
+//  printf("Inside process_wait\n");
+  return 0;
 }
 
 /* Free the current process's resources. */
@@ -114,6 +140,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+//  printf ("%s: exit(%d)\n",cur->status, 0);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -195,7 +222,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *file_name, char *file_args);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -206,7 +233,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (char *file_name, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -221,6 +248,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  char *delim = " ";
+  char *ptr;
+  file_name = strtok_r(file_name, delim, &ptr);
+  char *file_args = ptr;
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -302,12 +333,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name, file_args))
     goto done;
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
+//printf("%x",eip);
   success = true;
 
  done:
@@ -315,7 +346,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -368,15 +399,11 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 /* Loads a segment starting at offset OFS in FILE at address
    UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
    memory are initialized, as follows:
-
         - READ_BYTES bytes at UPAGE must be read from FILE
           starting at offset OFS.
-
         - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
    The pages initialized by this function must be writable by the
    user process if WRITABLE is true, read-only otherwise.
-
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
@@ -424,10 +451,76 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+void *pass_arguments(char *esp, char *file_name, char *file_args)
+{
+char *delim = " ";
+char *ptr;
+char *token;
+int argv = 0;
+int len = 0;
+ptr = file_args;
+char *itr = esp;
+len = len + strlen(file_name) + 1;
+itr = esp - len;
+strlcpy(itr, file_name, strlen(file_name)+1);
+do
+{
+token = strtok_r(ptr, delim, &ptr);
+if (token != NULL)
+{
+argv++;
+len = len + strlen(token) + 1;
+itr = esp - len;
+strlcpy(itr, token, strlen(token)+1);
+}
+}while (token != NULL);
+int pad = (len%4==0)?0:(4 - len%4);
+esp = itr - pad - 4;
+for (int i=0; i<pad+4; i++)
+{
+*esp = 0;
+esp++;
+}
+esp = itr - pad - 4;
+int intr;
+//printf("\nARG PASSING%x\n", itr);
+for (int i=0; i<argv+1; i++)
+{
+intr=itr;
+//*esp = (intr&0x000000FF)<<24|(intr&0x0000FF00)<<8|(intr&0x00FF0000)>>8|intr>>24;
+*(--esp) = (intr&0xFF000000)>>24;
+*(--esp) = (intr&0x00FF0000)>>16;
+*(--esp) = (intr&0x0000FF00)>>8;
+*(--esp) = (intr&0x000000FF);
+itr = itr + strlen(itr) + 1;
+}
+
+intr=esp;
+*(--esp) = (intr&0xFF000000)>>24;
+*(--esp) = (intr&0x00FF0000)>>16;
+*(--esp) = (intr&0x0000FF00)>>8;
+*(--esp) = (intr&0x000000FF);
+
+argv++;
+intr=argv;
+*(--esp) = (intr&0xFF000000)>>24;
+*(--esp) = (intr&0x00FF0000)>>16;
+*(--esp) = (intr&0x0000FF00)>>8;
+*(--esp) = (intr&0x000000FF);
+esp = esp - 4;
+for (int i=0; i<4; i++)
+{
+*esp = 0;
+esp++;
+}
+esp = esp - 4;
+return esp;
+}
+
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, char *file_name, char *file_args) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -436,8 +529,12 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
+     if (success)
+        {//printf("No probs here\n");
+        *esp = pass_arguments(PHYS_BASE, file_name, file_args);
+  //      printf("%x ESP \n", *esp);
+    //    hex_dump(PHYS_BASE-256, PHYS_BASE-256, 256, true);
+        }
       else
         palloc_free_page (kpage);
     }
