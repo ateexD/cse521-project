@@ -73,15 +73,21 @@ static tid_t allocate_tid (void);
 
 struct thread *get_thread(int tid)
 {
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  if(list_empty(&ready_list))
+	return NULL;
   struct list_elem *e;
   for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
   {
     struct thread *t = list_entry (e, struct thread, elem);
+
     if(t->tid == tid){
-     // printf("\n FOUND \n");
+      intr_set_level (old_level);
       return t;
     }
   }
+  intr_set_level (old_level);
   return NULL;
 }
 

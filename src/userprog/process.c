@@ -76,8 +76,6 @@ start_process (void *file_name_)
   //intr_dump_frame(&if_);
   success = load (file_name, &if_.eip, &if_.esp);
   //intr_dump_frame(&if_);
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
 //printf("HERE : %x\n",if_.esp);
@@ -111,6 +109,7 @@ process_wait (tid_t child_tid UNUSED)
  // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
 //	(t->status == THREAD_BLOCKED)) // || (t->status == THREAD_DYING))
 //	;
+//  printf("Parent TID : %d, child TID : %d \n",thread_current()->tid, child_tid);
   while((t=get_thread(child_tid)) != NULL)
 	;
 //  printf("Inside process_wait\n");
@@ -532,8 +531,8 @@ setup_stack (void **esp, char *file_name, char *file_args)
      if (success)
         {//printf("No probs here\n");
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-  //      printf("%x ESP \n", *esp);
-    //    hex_dump(PHYS_BASE-256, PHYS_BASE-256, 256, true);
+        //printf("%x ESP \n", *esp);
+        //hex_dump(PHYS_BASE-256, PHYS_BASE-256, 256, true);
         }
       else
         palloc_free_page (kpage);

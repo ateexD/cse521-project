@@ -28,7 +28,7 @@ check_expected ([<<'EOF']);
 (args) argv[20] = 't'
 (args) argv[21] = 'u'
 (args) argv[22] = 'v'
-(args) argv[22] = null
+(args) argv[23] = null
 (args) end
 args-many: exit(0)
 EOF

@@ -47,6 +47,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 		f->eax = exit_sys();
 		thread_exit();
 		break;
+	case 2: //printf("EXEC\n");
+		f->eax = exec_sys();
+		break;
 	case 3: //printf("WAIT\n");
 		f->eax = wait_sys();
 		break;
@@ -62,6 +65,14 @@ syscall_handler (struct intr_frame *f UNUSED)
   }
   //return;
   //thread_exit();
+}
+
+int
+exec_sys()
+{
+  char *file = *(esp + 1);
+
+  return process_wait(process_execute(file));
 }
 
 int wait_sys()
