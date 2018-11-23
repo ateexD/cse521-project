@@ -37,6 +37,37 @@ syscall_handler (struct intr_frame *f UNUSED)
   //intr_dump_frame(f);
   //printf ("system call!\n");
   //thread_exit ();
+ //printf("\n%x %d\n",esp, *esp);
+  //putbuf(esp,length(esp));
+
+void
+check_valid_addr(char *esp)
+{
+  if(f == NULL || f->esp == NULL || !is_user_vaddr(esp) ||
+			 pagedir_get_page (thread_current()->pagedir,esp) == NULL){
+	char *delim = " ";
+	char *ptr;
+  	char *file_name = thread_current()->name;
+  	file_name = strtok_r(file_name, delim, &ptr);
+	printf("%s: exit(%d)\n", file_name, -1) ;
+	thread_exit();
+  }
+}
+
+check_valid_addr(esp);
+
+  if(*esp < 0 || *esp >13 )
+  {
+      char *delim = " ";
+        char *ptr;
+        char *file_name = thread_current()->name;
+        file_name = strtok_r(file_name, delim, &ptr);
+        printf("%s: exit(%d)\n", file_name, -1) ;
+        thread_exit();
+
+  }
+
+
 
   switch(*esp){
 	case 0: //printf("HALT\n");
@@ -44,6 +75,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 		break;
 	case 1: //printf("EXIT\n");
 		//printf(" *** EXIT TID : %d\n",thread_current()->tid);
+ 		check_valid_addr(esp);
+		check_valid_addr(esp+1);
+		check_valid_addr(esp+2);
 		f->eax = exit_sys();
 		thread_exit();
 		break;
@@ -56,6 +90,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 	case 9: //printf("Write \n");
 		//int n = write (int fd, const void *buffer, unsigned size);
 	//	printf(" ***TID : %d\n",thread_current()->tid);
+		check_valid_addr(esp);
+                check_valid_addr(esp+1);
+                check_valid_addr(esp+2);
 		f->eax = write_sys();
 		//thread_exit();
 		break;
@@ -99,6 +136,7 @@ exit_sys(){
   //return status;
  // thread_exit();
  // printf ("%s: exit(%d)\n", );
+  
   return status;
 }
 
