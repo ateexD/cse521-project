@@ -17,10 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-//#include "userprog/syscall.h"
-static tid_t tid;
-static bool success;
- 
+
 static thread_func start_process NO_RETURN;
 static bool load (char *cmdline, void (**eip) (void), void **esp);
 
@@ -32,27 +29,35 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
-  
+  tid_t tid;
+/*  
+  const char *temp ="hello world";
+  char *save_ptr1;
+  char *tok = strtok_r (temp, " ", &save_ptr1);
+  printf("%s %s \n", temp, tok);
+*/
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+/*
+char *p_nm;
+  strcpy(p_nm, file_name);
+  char *save_ptr1;
+  char *tok = strtok_r (p_nm, " ", &save_ptr1);
+  printf("*****%s %s \n", p_nm, tok);
+*/
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  thread_current()->child_tid = tid;
+  
+  thread_current()->child_pid = tid;
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
- // sema_down(&(thread_current()->p_sema));
- // while(!is_child_success_set(tid))
-  //	;
-
-  //if(!success)
-   // tid = -1; 
-
+  
   return tid;
 }
 
@@ -63,23 +68,22 @@ start_process (void *file_name_)
 {
   char *file_name = file_name_;
   struct intr_frame if_;
-  //bool success;
+  bool success;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  
   success = load (file_name, &if_.eip, &if_.esp);
-
- // thread_current()->success_set = true;
-  //sema_up(&(parent_thread(tid)->p_sema));  
-
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
+    
+  update_child_tid(thread_current()->tid, success);
+  
   if (!success) 
     thread_exit ();
-
+//printf("HERE : %x\n",if_.esp);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -96,7 +100,6 @@ start_process (void *file_name_)
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
    immediately, without waiting.
-
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
@@ -111,6 +114,7 @@ process_wait (tid_t child_tid UNUSED)
  // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
 //	(t->status == THREAD_BLOCKED)) // || (t->status == THREAD_DYING))
 //	;
+//  printf("Parent TID : %d, child TID : %d \n",thread_current()->tid, child_tid);
   while((t=get_thread(child_tid)) != NULL)
 	;
 //  printf("Inside process_wait\n");
@@ -140,6 +144,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+//  printf ("%s: exit(%d)\n",cur->status, 0);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -337,7 +342,7 @@ load (char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
+//printf("%x",eip);
   success = true;
 
  done:
@@ -398,15 +403,11 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 /* Loads a segment starting at offset OFS in FILE at address
    UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
    memory are initialized, as follows:
-
         - READ_BYTES bytes at UPAGE must be read from FILE
           starting at offset OFS.
-
         - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
    The pages initialized by this function must be writable by the
    user process if WRITABLE is true, read-only otherwise.
-
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
@@ -486,7 +487,7 @@ esp++;
 }
 esp = itr - pad - 4;
 int intr;
-//printf("%x\n", itr);
+//printf("\nARG PASSING%x\n", itr);
 for (int i=0; i<argv+1; i++)
 {
 intr=itr;
@@ -533,10 +534,9 @@ setup_stack (void **esp, char *file_name, char *file_args)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
      if (success)
-        {
+        {//printf("No probs here\n");
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-        //printf("%x ESP \n", *esp);
-        //hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
+        //hex_dump(PHYS_BASE-256, PHYS_BASE-256, 256, true);
         }
       else
         palloc_free_page (kpage);

@@ -70,7 +70,7 @@ bool success;
 bool
 check_valid_addr(char *esp)
 {
-  if(esp == NULL || !is_user_vaddr(esp) ||
+  if(esp == 0 || esp == NULL || !is_user_vaddr(esp) ||
           pagedir_get_page (thread_current()->pagedir, esp) == NULL)
     return false;
   return true;
@@ -80,33 +80,43 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   int *esp = f->esp;
+  if(!check_valid_addr(esp)){
+    exit_sys(-1);
+  }
+  
   if(*esp < 0 || *esp >13 )
     exit_sys(-1);
   
-  check_valid_addr(esp);
-
   switch(*esp){
 	case SYS_HALT: 
 		f->eax = halt_sys(esp);
 		break;
 	case SYS_EXIT:
-        exit_sys((int)*++esp);	
+		if(!check_valid_addr(esp + 1))
+ 		   exit_sys(-1);
+		else  
+        	  exit_sys((int)*++esp);	
         break;
 	case SYS_WAIT: 
 		f->eax = wait_sys(esp);
 		break;
-    case SYS_FILESIZE:
-        f->eax = filesize_sys(esp);
-        break;
-    case SYS_WRITE: 
-         if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
-            exit_sys(-1);		
-         if ((int)*(esp + 3) == 0)
-         {
-           f->eax = 0;
-           return 0;
-         }
-        f->eax = write_sys(esp);
+	case SYS_EXEC:
+		if(!check_valid_addr(*(esp + 1)))
+			exit_sys(-1);
+		f->eax = exec_sys(esp);
+		break;
+    	case SYS_FILESIZE:
+        	f->eax = filesize_sys(esp);
+        	break;
+    	case SYS_WRITE: 
+        	if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
+            	exit_sys(-1);		
+         	if ((int)*(esp + 3) == 0)
+         	{
+         	 f->eax = 0;
+           	return 0;
+         	}
+        	f->eax = write_sys(esp);
    		break;
     case SYS_READ:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
@@ -139,6 +149,13 @@ syscall_handler (struct intr_frame *f)
     default: 
 		break;
   }
+}
+
+int
+exec_sys(int *esp)
+{
+  char *file = *(esp + 1);
+  return process_execute(file);
 }
 
 bool 

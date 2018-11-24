@@ -92,7 +92,6 @@ struct thread
     int recent_cpu;                     /* Recent CPU. */
     int old_priority;                   /* Priority stored for restore in priority donation. */
     int child_tid;
-    bool success_set;
     struct semaphore p_sema;
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem lock_elem;
@@ -154,7 +153,6 @@ void log_donation (struct lock *);
 void remove_donation_log (struct lock *);
 struct thread *get_thread(int tid);
 struct thread *parent_thread(int tid);
-bool is_child_success_set(int tid);
 //struct list * get_sleep_list(void);
 
 #endif /* threads/thread.h */
