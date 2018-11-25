@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (char *cmdline, void (**eip) (void), void **esp);
@@ -41,7 +42,18 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+  palloc_free_page (fn_copy);
+  return tid;
+  }
+  struct thread *t = get_thread(tid);
+  t->parent = thread_current()->tid;
+  sema_down(&t->sema_load_child);
+  //if (!t->load_status)
+  //  tid = TID_ERROR;
+  //printf("Load %d\n", t->load_status);
+  if (!thread_current()->load_status)
+   tid = -1;
   return tid;
 }
 
@@ -60,12 +72,15 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-
+  struct thread *t = get_thread(thread_current()->parent);
+  t->load_status = success;
+  //printf("Child %d\n", thread_current()->load_status);
   /* If load failed, quit. */
   palloc_free_page (file_name);
+  sema_up(&thread_current()->sema_load_child);
   if (!success) 
     thread_exit ();
-
+ 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -90,8 +105,8 @@ process_wait (tid_t child_tid UNUSED)
 {
   struct thread *t; // = get_thread(child_tid);
 
-  if((child_tid == TID_ERROR)) // || t == NULL)
-    return -1;
+  //if((child_tid == TID_ERROR)) // || t == NULL)
+    //return -1;
  // printf("Before while loop, t->status = %d \n",t->status);
 
  // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
@@ -100,7 +115,9 @@ process_wait (tid_t child_tid UNUSED)
   while((t=get_thread(child_tid)) != NULL)
 	;
 //  printf("Inside process_wait\n");
-  return 0;
+  if (t == NULL)
+   return -1;
+  return t->tid;
 }
 
 /* Free the current process's resources. */
@@ -283,7 +300,8 @@ load (char *file_name, void (**eip) (void), void **esp)
         case PT_DYNAMIC:
         case PT_INTERP:
         case PT_SHLIB:
-          goto done;
+          goto done
+;
         case PT_LOAD:
           if (validate_segment (&phdr, file)) 
             {
