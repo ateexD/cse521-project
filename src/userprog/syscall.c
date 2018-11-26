@@ -76,11 +76,7 @@ unsigned tell_sys(int *);
 
 bool check_addr(char *esp)
 {
-if(esp == NULL)
-    return false;
-  if (!is_user_vaddr(esp))
-    return false;
-  if (pagedir_get_page (thread_current()->pagedir, esp) == NULL)
+  if(esp == NULL || (!is_user_vaddr(esp)) || (pagedir_get_page (thread_current()->pagedir, esp) == NULL))
     return false;
  return true;
 }
@@ -134,6 +130,7 @@ syscall_handler (struct intr_frame *f)
          }
         f->eax = write_sys(esp);
    		break;
+    
     case SYS_READ:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
            exit_sys(-1);
@@ -144,24 +141,29 @@ syscall_handler (struct intr_frame *f)
         }
         f->eax = read_sys(esp);
         break;
+    
     case SYS_OPEN:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(*(esp + 1)))
             exit_sys(-1);
         f->eax = open_sys(esp);
         break;
+    
     case SYS_CREATE:
         if (!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 1)))
             exit_sys(-1);
         f->eax = create_sys(esp);
         break;
+    
     case SYS_CLOSE:
         if (!check_valid_addr(esp + 1))
             exit_sys(-1);
-        close_sys(esp);
+        close_sys((int)*(esp + 1));
         break;
+    
     case SYS_SEEK:
         seek_sys(esp);
         break;
+    
     case SYS_EXEC:
         if (!check_valid_addr((esp + 1)) ||  (!check_valid_addr(*(esp + 1))))
             exit_sys(-1);
@@ -178,8 +180,10 @@ syscall_handler (struct intr_frame *f)
          if (!check_valid_addr(esp + 1))
            exit_sys(-1);
          f->eax = tell_sys(esp);
+     
      default:
          exit_sys(-1);
+         break;
   }
 }
 
@@ -211,9 +215,8 @@ void seek_sys(int *esp)
 }
 
 void
-close_sys(int *esp)
+close_sys(int fd)
 {
-  int fd = (int) *(esp + 1);
   lock_acquire(&file_system_lock);
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
   if (fm == NULL)
@@ -221,6 +224,7 @@ close_sys(int *esp)
     lock_release(&file_system_lock);
     return;
   }
+  file_close(fm->f);
   list_remove(&fm->file_elem);
   free(fm);
   lock_release(&file_system_lock);
@@ -388,8 +392,11 @@ void close_all(int tid)
     e_next = list_next(e);
     if(fm->tid == tid)
     {
+      lock_acquire(&file_system_lock);
+      file_close(fm->f);
       list_remove(e);
       free(fm);
+      lock_release(&file_system_lock);
       if (list_empty(&fd_list))
         return;
     }

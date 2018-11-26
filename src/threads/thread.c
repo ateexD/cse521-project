@@ -177,23 +177,26 @@ thread_init (void)
 #ifdef USERPROG
 void log_exit_status (tid_t child_tid, tid_t parent_tid, int status)
 {
-struct exit_status *ex_stat = malloc(sizeof(struct exit_status));
-ex_stat->child = child_tid;
-ex_stat->parent = parent_tid;
-ex_stat->status = status;
-list_push_front(&exit_list, &ex_stat->elem);
+  struct exit_status *ex_stat = malloc(sizeof(struct exit_status));
+  ex_stat->child = child_tid;
+  ex_stat->parent = parent_tid;
+  ex_stat->status = status;
+  list_push_front(&exit_list, &ex_stat->elem);
 }
+
 int get_exit_status(tid_t child_tid, tid_t parent_tid)
 {
- struct list_elem *e;
- for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
+  struct list_elem *e;
+  for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
   {
     struct exit_status *ex_stat = list_entry (e, struct exit_status, elem);
     if (ex_stat->child == child_tid && ex_stat->parent == parent_tid)
-       {
-       list_remove(e);
-       return ex_stat->status;
-       }
+    {
+      list_remove(e);
+      int exit_status = ex_stat->status;
+      free(ex_stat);
+      return exit_status;
+    }
   }
  return -1;
 }
@@ -612,6 +615,7 @@ void remove_donation_log (struct lock *l)
           }
           sema_down(&donation_log_sema);
           list_remove(e);
+          free(list_entry(e, struct lock_holder, elem));
           sema_up(&donation_log_sema);
         }
           else if (list_entry(e, struct lock_holder, elem)->old_priority>priority && cnt>1)
