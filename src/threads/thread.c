@@ -89,7 +89,6 @@ static tid_t allocate_tid (void);
 struct thread *get_thread(int tid)
 {
   struct list_elem *e;
-  //printf("Atee here");
    enum intr_level old_level;
   
   ASSERT (!intr_context ());

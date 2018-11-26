@@ -130,7 +130,7 @@ syscall_handler (struct intr_frame *f)
          if ((int)*(esp + 3) == 0)
          {
            f->eax = 0;
-           return 0;
+           return;
          }
         f->eax = write_sys(esp);
    		break;
@@ -140,7 +140,7 @@ syscall_handler (struct intr_frame *f)
         if ((int)*(esp + 3) == 0)
         {
           f->eax = 0;
-          return 0;
+          return;
         }
         f->eax = read_sys(esp);
         break;
@@ -275,7 +275,8 @@ halt_sys(void *esp)
 void
 exit_sys(int status)
 {
- process_exit(status);
+  close_all(thread_current()->tid);
+  process_exit(status);
 }
 
 int 
@@ -374,4 +375,24 @@ tell_sys(int *esp)
   res = file_tell(fm->f);
   lock_release(&file_system_lock);
   return res;
+}
+
+void close_all(int tid)
+{
+  struct list_elem *e, *e_next;
+  struct file_mapping *fm;
+
+  for (e = list_begin(&fd_list); e != list_end(&fd_list) && !list_empty(&fd_list); )
+  {
+    fm = list_entry(e, struct file_mapping, file_elem);
+    e_next = list_next(e);
+    if(fm->tid == tid)
+    {
+      list_remove(e);
+      free(fm);
+      if (list_empty(&fd_list))
+        return;
+    }
+    e = e_next;
+  }
 }
