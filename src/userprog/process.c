@@ -456,68 +456,73 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 void *pass_arguments(char *esp, char *file_name, char *file_args)
 {
-char *delim = " ";
-char *ptr;
-char *token;
-int argv = 0;
-int len = 0;
-ptr = file_args;
-char *itr = esp;
-len = len + strlen(file_name) + 1;
-itr = esp - len;
-strlcpy(itr, file_name, strlen(file_name)+1);
-do
-{
-token = strtok_r(ptr, delim, &ptr);
-if (token != NULL)
-{
-argv++;
-len = len + strlen(token) + 1;
-itr = esp - len;
-strlcpy(itr, token, strlen(token)+1);
-}
-}while (token != NULL);
-int pad = (len%4==0)?0:(4 - len%4);
-esp = itr - pad - 4;
-for (int i=0; i<pad+4; i++)
-{
-*esp = 0;
-esp++;
-}
-esp = itr - pad - 4;
-int intr;
-//printf("%x\n", itr);
-for (int i=0; i<argv+1; i++)
-{
-intr=itr;
-//*esp = (intr&0x000000FF)<<24|(intr&0x0000FF00)<<8|(intr&0x00FF0000)>>8|intr>>24;
-*(--esp) = (intr&0xFF000000)>>24;
-*(--esp) = (intr&0x00FF0000)>>16;
-*(--esp) = (intr&0x0000FF00)>>8;
-*(--esp) = (intr&0x000000FF);
-itr = itr + strlen(itr) + 1;
-}
+  char *delim = " ";
+  char *ptr;
+  char *token;
+  int argv = 0;
+  int len = 0;
 
-intr=esp;
-*(--esp) = (intr&0xFF000000)>>24;
-*(--esp) = (intr&0x00FF0000)>>16;
-*(--esp) = (intr&0x0000FF00)>>8;
-*(--esp) = (intr&0x000000FF);
+  ptr = file_args;
+  char *itr = esp;
+  len = len + strlen(file_name) + 1;
+  itr = esp - len;
+  strlcpy(itr, file_name, strlen(file_name)+1);
+  
+  do
+  {
+    token = strtok_r(ptr, delim, &ptr);
+    if (token != NULL)
+    {
+      argv++;
+      len = len + strlen(token) + 1;
+      itr = esp - len;
+      strlcpy(itr, token, strlen(token)+1);
+    }
+  }
+  
+  while (token != NULL);
+  
+  int pad = (len % 4 == 0) ? 0: (4 - len % 4);
+  esp = itr - pad - 4;
+  for (int i = 0; i < pad + 4; i++)
+  {
+    *esp = 0;
+    esp++;
+  }
+  
+  esp = itr - pad - 4;
+  int intr;
+  
+  for (int i = 0; i < argv + 1; i++)
+  {
+    intr = itr;
+    *(--esp) = (intr & 0xFF000000) >> 24;
+    *(--esp) = (intr & 0x00FF0000) >> 16;
+    *(--esp) = (intr & 0x0000FF00) >> 8;
+    *(--esp) = (intr & 0x000000FF);
+    itr = itr + strlen(itr) + 1;
+  }
 
-argv++;
-intr=argv;
-*(--esp) = (intr&0xFF000000)>>24;
-*(--esp) = (intr&0x00FF0000)>>16;
-*(--esp) = (intr&0x0000FF00)>>8;
-*(--esp) = (intr&0x000000FF);
-esp = esp - 4;
-for (int i=0; i<4; i++)
-{
-*esp = 0;
-esp++;
-}
-esp = esp - 4;
-return esp;
+  intr = esp;
+  *(--esp) = (intr & 0xFF000000) >> 24;
+  *(--esp) = (intr & 0x00FF0000) >> 16;
+  *(--esp) = (intr & 0x0000FF00) >> 8;
+  *(--esp) = (intr & 0x000000FF);
+
+  argv++;
+  intr = argv;
+  *(--esp) = (intr & 0xFF000000) >> 24;
+  *(--esp) = (intr & 0x00FF0000) >> 16;
+  *(--esp) = (intr & 0x0000FF00) >> 8;
+  *(--esp) = (intr & 0x000000FF);
+  esp = esp - 4;
+  for (int i = 0; i < 4; i++)
+  {
+    *esp = 0;
+    esp++;
+  }
+  esp = esp - 4;
+  return esp;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -535,8 +540,6 @@ setup_stack (void **esp, char *file_name, char *file_args)
      if (success)
         {
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-        //printf("%x ESP \n", *esp);
-        //hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
         }
       else
         palloc_free_page (kpage);

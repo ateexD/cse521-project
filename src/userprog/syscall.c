@@ -308,6 +308,8 @@ write_sys(int *esp)
   int fd = *(esp + 1);
   char *buffer = *(esp + 2);
   unsigned size = *(esp + 3);
+  if(!buffer || !(&buffer))
+      exit_sys(-1);
   lock_acquire(&file_system_lock);
   if(fd == 1)
   {
