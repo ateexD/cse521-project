@@ -38,7 +38,9 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-
+  //char *delim = " ";
+  //char *ptr;
+  //file_name = strtok_r(file_name, delim, &ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -97,7 +99,6 @@ start_process (void *file_name_)
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
    immediately, without waiting.
-
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
@@ -122,8 +123,15 @@ process_wait (tid_t child_tid UNUSED)
 void
 process_exit (int status)
 {
+  
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  char *delim = " ";
+  char *ptr;
+  char *file_name = thread_current()->name;
+  file_name = strtok_r(file_name, delim, &ptr);
+  printf("%s: exit(%d)\n", cur->name, status ) ;
+
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -405,15 +413,11 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 /* Loads a segment starting at offset OFS in FILE at address
    UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
    memory are initialized, as follows:
-
         - READ_BYTES bytes at UPAGE must be read from FILE
           starting at offset OFS.
-
         - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
    The pages initialized by this function must be writable by the
    user process if WRITABLE is true, read-only otherwise.
-
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool

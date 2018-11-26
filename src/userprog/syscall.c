@@ -238,11 +238,11 @@ halt_sys(void *esp)
 void
 exit_sys(int status)
 {
-  char *delim = " ";
-  char *ptr;
-  char *file_name = thread_current()->name;
-  file_name = strtok_r(file_name, delim, &ptr);
-  printf("%s: exit(%d)\n", file_name, status ) ;
+  //char *delim = " ";
+  //char *ptr;
+  //char *file_name = thread_current()->name;
+  //file_name = strtok_r(file_name, delim, &ptr);
+  //printf("%s: exit(%d)\n", file_name, status ) ;
   process_exit(status);
 }
 
