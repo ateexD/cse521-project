@@ -103,26 +103,24 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  struct thread *t; // = get_thread(child_tid);
+  struct thread *t = get_thread(child_tid);
+  if (t != NULL)
+  {
+    if (!(t->parent == thread_current()->tid))
+      return -1;
 
-  //if((child_tid == TID_ERROR)) // || t == NULL)
-    //return -1;
  // printf("Before while loop, t->status = %d \n",t->status);
-
- // while((t->status == THREAD_RUNNING) || (t->status == THREAD_READY) || 
-//	(t->status == THREAD_BLOCKED)) // || (t->status == THREAD_DYING))
+    sema_down(&t->wait_for_child);
+  //while((t=get_thread(child_tid)) != NULL)
 //	;
-  while((t=get_thread(child_tid)) != NULL)
-	;
 //  printf("Inside process_wait\n");
-  if (t == NULL)
-   return -1;
-  return t->tid;
+  }
+  return get_exit_status(child_tid, thread_current()->tid);
 }
 
 /* Free the current process's resources. */
 void
-process_exit (void)
+process_exit (int status)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
@@ -143,6 +141,11 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  //acquire_exit_lock();
+  log_exit_status(cur->tid, cur->parent, status);
+  //release_exit_lock();
+  sema_up(&cur->wait_for_child);
+  thread_exit();
 }
 
 /* Sets up the CPU for running user code in the current

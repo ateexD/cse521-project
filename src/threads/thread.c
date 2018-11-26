@@ -36,6 +36,10 @@ static struct list all_list;
 /* List of lock holders that have received a priority donation. */
 static struct list donation_lock_holders;
 
+#ifdef USERPROG
+static struct list exit_list;
+#endif
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -123,6 +127,14 @@ struct lock *lock;
 struct list_elem elem;
 };
 
+struct exit_status
+{
+tid_t child;
+tid_t parent;
+int status;
+struct list_elem elem;
+};
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -145,9 +157,13 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&donation_lock_holders);
+  #ifdef USERPROG
+  list_init (&exit_list);
+  #endif
   sema_init (&ready_sema, 1);
   sema_init (&create_sema, 1);
   sema_init (&donation_log_sema, 1);
+ 
   load_avg = 0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -158,6 +174,31 @@ thread_init (void)
   initial_thread->nice = 0;
   initial_thread->recent_cpu = 0;
 }
+
+#ifdef USERPROG
+void log_exit_status (tid_t child_tid, tid_t parent_tid, int status)
+{
+struct exit_status *ex_stat = malloc(sizeof(struct exit_status));
+ex_stat->child = child_tid;
+ex_stat->parent = parent_tid;
+ex_stat->status = status;
+list_push_front(&exit_list, &ex_stat->elem);
+}
+int get_exit_status(tid_t child_tid, tid_t parent_tid)
+{
+ struct list_elem *e;
+ for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
+  {
+    struct exit_status *ex_stat = list_entry (e, struct exit_status, elem);
+    if (ex_stat->child == child_tid && ex_stat->parent == parent_tid)
+       {
+       list_remove(e);
+       return ex_stat->status;
+       }
+  }
+ return -1;
+}
+#endif
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -247,8 +288,11 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+  
+  #ifdef USERPROG
   sema_init(&t->sema_load_child, 0);
+  sema_init(&t->wait_for_child, 0);
+  #endif
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -389,9 +433,9 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
-#ifdef USERPROG
-  process_exit ();
-#endif
+//#ifdef USERPROG
+//  process_exit ();
+//#endif
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us

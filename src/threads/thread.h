@@ -95,12 +95,15 @@ struct thread
     struct list_elem lock_elem;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct semaphore sema_load_child;
-    bool load_status;
-    tid_t parent;
+    
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct semaphore sema_load_child;
+    bool load_status;
+    tid_t parent;
+    struct semaphore wait_for_child;
+
 #endif
 
     /* Owned by thread.c. */
@@ -152,6 +155,8 @@ int thread_get_load_avg (void);
 void log_donation (struct lock *);
 void remove_donation_log (struct lock *);
 struct thread *get_thread(int tid);
+int  get_exit_status(tid_t, tid_t);
+void log_exit_status(tid_t, tid_t, int);
 //struct list * get_sleep_list(void);
 
 #endif /* threads/thread.h */

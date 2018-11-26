@@ -9,12 +9,13 @@
 #include "filesys/filesys.h"
 #include "devices/input.h"
 #include "devices/shutdown.h"
-
+#include <stdlib.h>
 struct file_mapping
 {
   int fd;
   int tid;
   struct file *f;
+  char *fname;
   struct list_elem file_elem;
 };
 struct lock file_system_lock;
@@ -33,7 +34,7 @@ syscall_init (void)
   list_init(&fd_list);
 }
 
-struct file_mapping* add_to_fd_list(int tid, struct file *f)
+struct file_mapping* add_to_fd_list(int tid, struct file *f, char *fname)
 {
   if (tid == TID_ERROR)
       exit_sys(-1);
@@ -44,6 +45,7 @@ struct file_mapping* add_to_fd_list(int tid, struct file *f)
   fm->f = f;
   fm->tid = tid;
   fm->fd = fd;
+  fm->fname = fname;
   list_push_back(&fd_list, &fm->file_elem);
   return fm;
 }
@@ -57,7 +59,7 @@ struct file_mapping* look_up_fd_list(int tid, int fd)
   for(e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e))
   {
     struct file_mapping *fm = list_entry(e, struct file_mapping, file_elem);
-    if (fm->fd == fd)
+    if (fm->fd == fd && fm->tid == tid)
         return fm;
   }
   return NULL;
@@ -196,9 +198,10 @@ close_sys(int *esp)
 {
   int fd = (int) *(esp + 1);
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
-  if (fm == NULL)
-      return;
+  if (fm != NULL)
+     // return;
   list_remove(&fm->file_elem);
+  
 }
 
 int
@@ -208,7 +211,7 @@ open_sys (int *esp)
   struct file *f = filesys_open(fname);
   if (f == NULL)
     return -1;
-  return add_to_fd_list(thread_current()->tid, f)->fd;
+  return add_to_fd_list(thread_current()->tid, f, fname)->fd;
 }
 
 int 
@@ -240,7 +243,7 @@ exit_sys(int status)
   char *file_name = thread_current()->name;
   file_name = strtok_r(file_name, delim, &ptr);
   printf("%s: exit(%d)\n", file_name, status ) ;
-  thread_exit();
+  process_exit(status);
 }
 
 int 
@@ -276,9 +279,23 @@ write_sys(int *esp)
     return size;
   }
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
+  //printf("%s, %s\n", fm->fname, thread_current()->name);
   if (fm == NULL)
-      return -1;
-
+    return -1;
+     //printf("1");
+  struct thread *cur = thread_current();
+  char *delim = " ";
+  char *ptr;
+  char *fn_copy;
+  fn_copy = malloc(sizeof(strlen(cur->name)));
+  //if (fn_copy == NULL)
+    //return TID_ERROR;
+  strlcpy(fn_copy, cur->name, strlen(cur->name)+1);
+  fn_copy = strtok_r(fn_copy, delim, &ptr);
+  
+  if (strcmp(fm->fname, fn_copy)==0)
+    return 0;
+     
   int actual_size = file_write(fm->f, buffer, size);
   return actual_size;
 }
