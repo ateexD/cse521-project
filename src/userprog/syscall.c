@@ -25,6 +25,9 @@ bool success;
 
 int read_sys(int*);
 bool create_sys(int *);
+bool remove_sys(int *);
+unsigned tell_sys(int *);
+
 
 static void syscall_handler (struct intr_frame *);
 
@@ -92,36 +95,42 @@ syscall_handler (struct intr_frame *f)
 	case SYS_HALT: 
 		f->eax = halt_sys(esp);
 		break;
-	case SYS_EXIT:
+	
+    case SYS_EXIT:
 		if(!check_valid_addr(esp + 1))
  		   exit_sys(-1);
 		else  
         	  exit_sys((int)*++esp);	
         break;
-	case SYS_WAIT: 
+	
+    case SYS_WAIT: 
 		f->eax = wait_sys(esp);
 		break;
-	case SYS_EXEC:
+	
+    case SYS_EXEC:
 		if(!check_valid_addr(*(esp + 1)))
-			exit_sys(-1);
+		  exit_sys(-1);
 		f->eax = exec_sys(esp);
 		break;
-    	case SYS_FILESIZE:
-        	f->eax = filesize_sys(esp);
-        	break;
-    	case SYS_WRITE: 
-        	if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
-            	exit_sys(-1);		
-         	if ((int)*(esp + 3) == 0)
-         	{
-         	 f->eax = 0;
-           	return 0;
-         	}
-        	f->eax = write_sys(esp);
-   		break;
+
+    case SYS_FILESIZE:
+        f->eax = filesize_sys(esp);
+        break;
+    
+    case SYS_WRITE: 
+        if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
+          exit_sys(-1);		
+        if ((int)*(esp + 3) == 0)
+        {
+          f->eax = 0;
+          return 0;
+        }
+        f->eax = write_sys(esp);
+        break;
+
     case SYS_READ:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
-           exit_sys(-1);
+          exit_sys(-1);
         if ((int)*(esp + 3) == 0)
         {
           f->eax = 0;
@@ -129,26 +138,43 @@ syscall_handler (struct intr_frame *f)
         }
         f->eax = read_sys(esp);
         break;
+    
     case SYS_OPEN:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(*(esp + 1)))
-            exit_sys(-1);
+          exit_sys(-1);
         f->eax = open_sys(esp);
         break;
+    
     case SYS_CREATE:
         if (!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 1)))
-            exit_sys(-1);
+          exit_sys(-1);
         f->eax = create_sys(esp);
         break;
+    
     case SYS_CLOSE:
         if (!check_valid_addr(esp + 1))
-            exit_sys(-1);
+          exit_sys(-1);
         close_sys(esp);
         break;
+    
     case SYS_SEEK:
+        if (!check_valid_addr(esp + 1))
+          exit_sys(-1);
         seek_sys(esp);
         break;
+    
+    case SYS_REMOVE:
+        if(!check_valid_addr(esp + 1))
+          exit_sys(-1);
+        f->eax = remove_sys(esp);
+        break;
+    
+    case SYS_TELL:
+        if (!check_valid_addr(esp + 1))
+          exit_sys(-1);
+        f->eax = tell_sys(esp);
     default: 
-		break;
+		exit_sys(-1);
   }
 }
 
@@ -298,4 +324,32 @@ write_sys(int *esp)
   int actual_size = file_write(fm->f, buffer, size);
   lock_release(&file_system_lock);
   return actual_size;
+}
+
+bool
+remove_sys(int *esp)
+{
+  char *fname = (char *)*(esp + 1);
+  bool res;
+  lock_acquire(&file_system_lock);
+  res = filesys_remove(fname);
+  lock_release(&file_system_lock);
+  return res;
+}
+
+unsigned
+tell_sys(int *esp)
+{
+  int fd = (int) *(esp + 1);
+  unsigned res;
+  lock_acquire(&file_system_lock);
+  struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
+  if(fm == NULL)
+  {
+    lock_release(&file_system_lock);
+    exit_sys(-1);
   }
+  res = file_tell(fm->f);
+  lock_release(&file_system_lock);
+  return res;
+}
