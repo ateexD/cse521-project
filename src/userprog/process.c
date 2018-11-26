@@ -38,22 +38,16 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  //char *delim = " ";
-  //char *ptr;
-  //file_name = strtok_r(file_name, delim, &ptr);
-  /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
   {
-  palloc_free_page (fn_copy);
-  return tid;
+    palloc_free_page (fn_copy);
+    return tid;
   }
   struct thread *t = get_thread(tid);
   t->parent = thread_current()->tid;
   sema_down(&t->sema_load_child);
-  //if (!t->load_status)
-  //  tid = TID_ERROR;
-  //printf("Load %d\n", t->load_status);
+ 
   if (!thread_current()->load_status)
    tid = -1;
   return tid;
@@ -76,8 +70,8 @@ start_process (void *file_name_)
   success = load (file_name, &if_.eip, &if_.esp);
   struct thread *t = get_thread(thread_current()->parent);
   t->load_status = success;
-  //printf("Child %d\n", thread_current()->load_status);
   /* If load failed, quit. */
+
   palloc_free_page (file_name);
   sema_up(&thread_current()->sema_load_child);
   if (!success) 
@@ -110,12 +104,8 @@ process_wait (tid_t child_tid UNUSED)
     if (!(t->parent == thread_current()->tid))
       return -1;
 
- // printf("Before while loop, t->status = %d \n",t->status);
     sema_down(&t->wait_for_child);
-  //while((t=get_thread(child_tid)) != NULL)
-//	;
-//  printf("Inside process_wait\n");
-  }
+ }
   return get_exit_status(child_tid, thread_current()->tid);
 }
 
@@ -149,9 +139,7 @@ process_exit (int status)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  //acquire_exit_lock();
   log_exit_status(cur->tid, cur->parent, status);
-  //release_exit_lock();
   sema_up(&cur->wait_for_child);
   thread_exit();
 }
@@ -547,9 +535,7 @@ setup_stack (void **esp, char *file_name, char *file_args)
      if (success)
         {
         *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-        //printf("%x ESP \n", *esp);
-        //hex_dump(PHYS_BASE - 256, PHYS_BASE - 256, 256, true);
-        }
+       }
       else
         palloc_free_page (kpage);
     }
