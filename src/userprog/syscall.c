@@ -4,6 +4,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #include <string.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -42,6 +43,8 @@ struct file_mapping* add_to_fd_list(int tid, struct file *f, char *fname)
   int fd = ++fd_cnt;
   lock_release(&file_system_lock);
   struct file_mapping *fm = malloc(sizeof(struct file_mapping));
+  if (fm == NULL)
+      return NULL;
   fm->f = f;
   fm->tid = tid;
   fm->fd = fd;
@@ -64,10 +67,12 @@ struct file_mapping* look_up_fd_list(int tid, int fd)
   }
   return NULL;
 }
-int write (int fd, const void *buffer, unsigned size);
 int read_sys(int*);
 bool create_sys(int *);
 bool success;
+bool remove_sys(int *);
+unsigned tell_sys(int *);
+
 
 bool check_addr(char *esp)
 {
@@ -99,21 +104,26 @@ syscall_handler (struct intr_frame *f)
     exit_sys(-1);
   
 
-  switch(*esp){
+  switch(*esp)
+  {
 	case SYS_HALT: 
 		f->eax = halt_sys(esp);
 		break;
-	case SYS_EXIT:
-                if(!check_valid_addr(esp + 1))
-                  exit_sys(-1);
-                exit_sys(*(++esp));	
+
+    case SYS_EXIT:
+        if(!check_valid_addr(esp + 1))
+          exit_sys(-1);
+        exit_sys(*(++esp));	
         break;
-	case SYS_WAIT: 
+	
+    case SYS_WAIT: 
 		f->eax = wait_sys(esp);
 		break;
+    
     case SYS_FILESIZE:
         f->eax = filesize_sys(esp);
         break;
+    
     case SYS_WRITE: 
          if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
             exit_sys(-1);		
@@ -153,29 +163,30 @@ syscall_handler (struct intr_frame *f)
         seek_sys(esp);
         break;
     case SYS_EXEC:
-        if (!check_valid_addr((esp + 1)))
+        if (!check_valid_addr((esp + 1)) ||  (!check_valid_addr(*(esp + 1))))
             exit_sys(-1);
-        if (!check_valid_addr(*(esp + 1)))
-            exit_sys(-1);
-        //char *c = esp+1;
-        //printf("1");
-        //printf("Before dd\n %x, %x\n",c, *c);
-        //if(!check_valid_addr(c+3))
-          //  exit_sys(-1);
-        //if(!check_valid_addr((((uint32_t *)(esp + 1)))))
-          //  exit_sys(-1);
         f->eax = exec_sys(esp);
         break;
-    default: 
-        break;
+
+     case SYS_REMOVE:
+         if(!check_valid_addr(esp + 1))
+           exit_sys(-1);
+         f->eax = remove_sys(esp);
+         break;
+
+     case SYS_TELL:
+         if (!check_valid_addr(esp + 1))
+           exit_sys(-1);
+         f->eax = tell_sys(esp);
+     default:
+         exit_sys(-1);
   }
 }
 
 int exec_sys(int *esp)
 {
-//printf("Here");
-char *file = *(++esp);
-return process_execute(file);
+  char *file = *(++esp);
+  return process_execute(file);
 }
 
 bool 
@@ -186,32 +197,54 @@ create_sys (int *esp)
 
 void seek_sys(int *esp)
 {
- int fd = (int) *(esp + 1);
- int pos = (int) *(esp + 2);
- struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
- if (fm == NULL)
-     exit_sys(-1);
- file_seek (fm->f, pos);
+  int fd = (int) *(esp + 1);
+  int pos = (int) *(esp + 2);
+  lock_acquire(&file_system_lock);
+  struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
+  if (fm == NULL)
+  {
+    lock_release(&file_system_lock);
+    exit_sys(-1);
+  }
+  file_seek (fm->f, pos);
+  lock_release(&file_system_lock);
 }
+
 void
 close_sys(int *esp)
 {
   int fd = (int) *(esp + 1);
+  lock_acquire(&file_system_lock);
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
-  if (fm != NULL)
-     // return;
+  if (fm == NULL)
+  {
+    lock_release(&file_system_lock);
+    return;
+  }
   list_remove(&fm->file_elem);
-  
+  free(fm);
+  lock_release(&file_system_lock);
 }
-
+    
 int
 open_sys (int *esp)
 {
   char *fname = *(esp + 1);
+  lock_acquire(&file_system_lock);
   struct file *f = filesys_open(fname);
   if (f == NULL)
+  {
+   lock_release(&file_system_lock);
+   return -1;
+  }
+  lock_release(&file_system_lock);
+  struct file_mapping *fm =  add_to_fd_list(thread_current()->tid, f, fname);
+  if (fm == NULL)
+  {
+    lock_release(&file_system_lock);
     return -1;
-  return add_to_fd_list(thread_current()->tid, f, fname)->fd;
+  }
+  return fm->fd;
 }
 
 int 
@@ -223,11 +256,15 @@ wait_sys(int *esp)
 
 int filesize_sys(int *esp)
 {
+  lock_acquire(&file_system_lock);
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, (int) *(esp + 1));
   if (fm == NULL)
-      return -1;
+  {
+    lock_release(&file_system_lock);
+    return -1;
+  }
+  lock_release(&file_system_lock);
   return file_length(fm->f);
-
 }
 int
 halt_sys(void *esp)
@@ -238,12 +275,7 @@ halt_sys(void *esp)
 void
 exit_sys(int status)
 {
-  //char *delim = " ";
-  //char *ptr;
-  //char *file_name = thread_current()->name;
-  //file_name = strtok_r(file_name, delim, &ptr);
-  //printf("%s: exit(%d)\n", file_name, status ) ;
-  process_exit(status);
+ process_exit(status);
 }
 
 int 
@@ -252,18 +284,24 @@ read_sys(int *esp)
   int fd = *(esp + 1);
   char *buffer = *(esp + 2);
   unsigned size = *(esp + 3);
+  lock_acquire(&file_system_lock);
   if (fd == 0)
   {
     int i = 0;
     while(size--)
       buffer[i++] = (void *)input_getc();
+    lock_release(&file_system_lock);
     return i;
   }
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
   if (fm == NULL)
+    {
+      lock_release(&file_system_lock);
       return -1;
+    }
   int actual_size = file_read(fm->f, buffer, size);
   buffer[actual_size] = '\0';
+  lock_release(&file_system_lock);
   return actual_size;
 }
 
@@ -273,29 +311,67 @@ write_sys(int *esp)
   int fd = *(esp + 1);
   char *buffer = *(esp + 2);
   unsigned size = *(esp + 3);
+  lock_acquire(&file_system_lock);
   if(fd == 1)
   {
     putbuf(buffer, size);
+    lock_release(&file_system_lock);
     return size;
   }
   struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
-  //printf("%s, %s\n", fm->fname, thread_current()->name);
   if (fm == NULL)
+  {
+    lock_release(&file_system_lock);
     return -1;
-     //printf("1");
+  }
   struct thread *cur = thread_current();
   char *delim = " ";
   char *ptr;
   char *fn_copy;
   fn_copy = malloc(sizeof(strlen(cur->name)));
-  //if (fn_copy == NULL)
-    //return TID_ERROR;
+  if(fn_copy == NULL)
+  {
+      lock_release(&file_system_lock);
+      return -1;
+  }
   strlcpy(fn_copy, cur->name, strlen(cur->name)+1);
   fn_copy = strtok_r(fn_copy, delim, &ptr);
   
   if (strcmp(fm->fname, fn_copy)==0)
+  {
+    lock_release(&file_system_lock);
     return 0;
-     
+  }
+  free(fn_copy);
   int actual_size = file_write(fm->f, buffer, size);
+  lock_release(&file_system_lock);
   return actual_size;
+}
+
+bool
+remove_sys(int *esp)
+{
+  char *fname = (char *)*(esp + 1);
+  bool res;
+  lock_acquire(&file_system_lock);
+  res = filesys_remove(fname);
+  lock_release(&file_system_lock);
+  return res;
+}
+
+unsigned
+tell_sys(int *esp)
+{
+  int fd = (int) *(esp + 1);
+  unsigned res;
+  lock_acquire(&file_system_lock);
+  struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
+  if(fm == NULL)
+  {
+    lock_release(&file_system_lock);
+    exit_sys(-1);
+  }
+  res = file_tell(fm->f);
+  lock_release(&file_system_lock);
+  return res;
 }
