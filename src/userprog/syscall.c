@@ -189,8 +189,7 @@ syscall_handler (struct intr_frame *f)
 
 int exec_sys(int *esp)
 {
-  char *file = *(++esp);
-  return process_execute(file);
+  return process_execute((char *) *(esp + 1));
 }
 
 bool 
@@ -204,13 +203,13 @@ void seek_sys(int *esp)
   int fd = (int) *(esp + 1);
   int pos = (int) *(esp + 2);
   lock_acquire(&file_system_lock);
-  struct file_mapping *fm = look_up_fd_list(thread_current()->tid, fd);
+  struct file_mapping *fm = look_up_fd_list(thread_current()->tid, (int) *(esp + 1));
   if (fm == NULL)
   {
     lock_release(&file_system_lock);
     exit_sys(-1);
   }
-  file_seek (fm->f, pos);
+  file_seek (fm->f, (int) *(esp + 2));
   lock_release(&file_system_lock);
 }
 
@@ -254,8 +253,7 @@ open_sys (int *esp)
 int 
 wait_sys(int *esp)
 {
-  int pid = *(esp + 1);
-  return process_wait(pid);
+  return process_wait((int) *(esp + 1));
 }
 
 int filesize_sys(int *esp)
@@ -305,7 +303,6 @@ read_sys(int *esp)
       return -1;
     }
   int actual_size = file_read(fm->f, buffer, size);
-  buffer[actual_size] = '\0';
   lock_release(&file_system_lock);
   return actual_size;
 }
