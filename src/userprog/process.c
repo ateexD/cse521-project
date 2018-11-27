@@ -113,7 +113,7 @@ process_wait (tid_t child_tid UNUSED)
 void
 process_exit (int status)
 {
-  
+  /* Print instructed exit message. */
   struct thread *cur = thread_current ();
   uint32_t *pd;
   char *delim = " ";
@@ -532,10 +532,10 @@ setup_stack (void **esp, char *file_name, char *file_args)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-     if (success)
-        {
-        *esp = pass_arguments(PHYS_BASE, file_name, file_args);
-       }
+
+      if (success)
+       *esp = pass_arguments(PHYS_BASE, file_name, file_args);
+
       else
         palloc_free_page (kpage);
     }
