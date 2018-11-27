@@ -150,16 +150,22 @@ syscall_handler (struct intr_frame *f)
         break;
 	
     case SYS_WAIT: 
-		f->eax = wait_sys(esp);
+		if(!check_valid_addr(esp + 1))
+          exit_sys(-1);
+        f->eax = wait_sys(esp);
 		break;
     
     case SYS_FILESIZE:
+        if (!check_valid_addr(esp + 1))
+          exit_sys(-1);
         f->eax = filesize_sys(esp);
         break;
     
     case SYS_WRITE: 
          if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
-            exit_sys(-1);		
+            exit_sys(-1);
+         /* Return if size to write is 0, without modifying
+          * buffer. */
          if ((int)*(esp + 3) == 0)
          {
            f->eax = 0;
@@ -171,6 +177,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_READ:
         if(!check_valid_addr(esp + 1) || !check_valid_addr(esp + 2) || !check_valid_addr(*(esp + 2)) || !check_valid_addr(esp + 3))
            exit_sys(-1);
+        /* Same as write. */
         if ((int)*(esp + 3) == 0)
         {
           f->eax = 0;
@@ -285,11 +292,10 @@ open_sys (int *esp)
   }
   lock_release(&file_system_lock);
   struct file_mapping *fm =  add_to_fd_list(thread_current()->tid, f, fname);
+  
   if (fm == NULL)
-  {
-    lock_release(&file_system_lock);
     return -1;
-  }
+  
   return fm->fd;
 }
 

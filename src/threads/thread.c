@@ -235,12 +235,12 @@ thread_tick (void)
 #endif
   else
    {
-       kernel_ticks++;
-       if (thread_mlfqs)
-       {
-         k = add_fixed_point_int (t->recent_cpu, 1);
-         t->recent_cpu = k;
-       }
+     kernel_ticks++;
+     if (thread_mlfqs)
+     {
+       k = add_fixed_point_int (t->recent_cpu, 1);
+       t->recent_cpu = k;
+     }
    }
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -615,7 +615,6 @@ void remove_donation_log (struct lock *l)
           }
           sema_down(&donation_log_sema);
           list_remove(e);
-          free(list_entry(e, struct lock_holder, elem));
           sema_up(&donation_log_sema);
         }
           else if (list_entry(e, struct lock_holder, elem)->old_priority>priority && cnt>1)
@@ -956,11 +955,10 @@ update_load_avg ()
   
   /* ready_threads is the number of threads in ready_list and the 
    * current thread if it is not the idle thread. */
-  int ready_threads;
+  int ready_threads = list_size(&ready_list);
+
   if (thread_current() != idle_thread)
-    ready_threads = list_size (&ready_list) + 1;
-  else
-    ready_threads = list_size (&ready_list);
+    ready_threads++; 
 
   int temp = add (mult (ratio1, load_avg), mult_fixed_point_int (ratio2, ready_threads));
   load_avg = temp;
