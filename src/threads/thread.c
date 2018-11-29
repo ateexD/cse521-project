@@ -91,20 +91,14 @@ static tid_t allocate_tid (void);
 struct thread *get_thread(int tid)
 {
   struct list_elem *e;
-   enum intr_level old_level;
   
-  ASSERT (!intr_context ());
-
-  old_level = intr_disable ();
   for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
   {
     struct thread *t = list_entry (e, struct thread, allelem);
     if(t->tid == tid){
-      intr_set_level (old_level);
       return t;
     }
   }
-  intr_set_level (old_level);
   return NULL;
 }
 
@@ -442,10 +436,6 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-
-//#ifdef USERPROG
-//  process_exit ();
-//#endif
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
