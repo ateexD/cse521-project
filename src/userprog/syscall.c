@@ -20,6 +20,7 @@ struct file_mapping
   int tid;
   struct file *f;
   struct list_elem file_elem;
+  char *fname;
 };
 
 /* Global file system lock. */
@@ -110,10 +111,11 @@ bool check_addr(char *esp)
  return true;
 }
 
+/* Function to validate address bytewise*/
 bool
 check_valid_addr(char *esp)
 {
-  if(!check_addr(esp) || !(check_addr(esp+3)))
+  if(!check_addr(esp) || !check_addr(esp+1) || !check_addr(esp+2) || !check_addr(esp+3))
     return false;
   return true;
 }
@@ -138,7 +140,7 @@ syscall_handler (struct intr_frame *f)
    * if needs be. */
   switch(*esp)
   {
-	case SYS_HALT: 
+    case SYS_HALT: 
 		f->eax = halt_sys(esp);
 		break;
 
@@ -209,7 +211,7 @@ syscall_handler (struct intr_frame *f)
     
     case SYS_EXEC:
         if (!check_valid_addr((esp + 1)) ||  (!check_valid_addr(*(esp + 1))))
-            exit_sys(-1);
+          exit_sys(-1);
         f->eax = exec_sys(esp);
         break;
 

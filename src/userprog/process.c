@@ -44,12 +44,16 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return tid;
   }
+  /* Assign parent thread's PID to child thread. */
   struct thread *t = get_thread(tid);
   t->parent = thread_current()->tid;
+
+  /* Block parent thread to wait until child is loaded. */
   sema_down(&t->sema_load_child);
  
   if (!thread_current()->load_status)
    tid = -1;
+  
   return tid;
 }
 
@@ -68,11 +72,16 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  
+  /*  Assign child's load status to the parent thread. */
   struct thread *t = get_thread(thread_current()->parent);
   t->load_status = success;
+  
   /* If load failed, quit. */
 
   palloc_free_page (file_name);
+
+  /* Unblock parent thread so it can resume execution */
   sema_up(&thread_current()->sema_load_child);
   if (!success) 
     thread_exit ();
@@ -98,12 +107,14 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  /* Get thread pointer of child and check is it is alive.  */
   struct thread *t = get_thread(child_tid);
   if (t != NULL)
   {
     if (!(t->parent == thread_current()->tid))
       return -1;
-
+    /* If parent has called process_wait() and child is running
+       block parent. */
     sema_down(&t->wait_for_child);
  }
   return get_exit_status(child_tid, thread_current()->tid);
@@ -140,7 +151,12 @@ process_exit (int status)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Keep log of exit statuses of processes in case parent
+     requests it in the future. */
   log_exit_status(cur->tid, cur->parent, status);
+  
+  /* Unblock parent, if a parent waits for this thread. */
   sema_up(&cur->wait_for_child);
   thread_exit();
 }
@@ -463,6 +479,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+/* Function to pass arguments to the stack. 
+   Called in setup_stack(). */
 void *pass_arguments(char *esp, char *file_name, char *file_args)
 {
   char *delim = " ";
@@ -472,9 +490,13 @@ void *pass_arguments(char *esp, char *file_name, char *file_args)
   int len = 0;
   ptr = file_args;
   char *itr = esp;
+
+  /* Push filename to the stack first. */
   len = len + strlen(file_name) + 1;
   itr = esp - len;
   strlcpy(itr, file_name, strlen(file_name)+1);
+  
+  /* Push other arguments to the stack. */
   do
   {
     token = strtok_r(ptr, delim, &ptr);
@@ -487,6 +509,7 @@ void *pass_arguments(char *esp, char *file_name, char *file_args)
     }
   } while (token != NULL);
 
+  /* Padding to ensure 4 byte blocks. */
   int pad = (len % 4 == 0) ? 0 : (4 - len % 4);
   esp = itr - pad - 4;
   for (int i = 0; i< pad + 4; i++)
@@ -498,6 +521,8 @@ void *pass_arguments(char *esp, char *file_name, char *file_args)
   esp = itr - pad - 4;
   int intr;
   
+  /* Pushing addresses of the arguments in 
+     right to left order. */
   for (int i = 0; i < argv + 1; i++)
   {
     intr=itr;
@@ -508,12 +533,17 @@ void *pass_arguments(char *esp, char *file_name, char *file_args)
     itr = itr + strlen(itr) + 1;
   }
 
+  /* Pushing address of the address of the
+     first argument in right to left order. */
   intr=esp;
   *(--esp) = (intr & 0xFF000000) >> 24;
   *(--esp) = (intr & 0x00FF0000) >> 16;
   *(--esp) = (intr & 0x0000FF00) >> 8;
   *(--esp) = (intr & 0x000000FF);
 
+
+  /* Pushing number of the arguments in 
+     right to left order. */
   argv++;
   intr = argv;
   *(--esp) = (intr & 0xFF000000) >> 24;
@@ -521,6 +551,8 @@ void *pass_arguments(char *esp, char *file_name, char *file_args)
   *(--esp) = (intr & 0x0000FF00) >> 8;
   *(--esp) = (intr & 0x000000FF);
   esp = esp - 4;
+
+  /* 0 return address. */
   for (int i = 0; i < 4; i++)
   {
     *esp = 0;
