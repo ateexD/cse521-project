@@ -20,6 +20,7 @@ struct file_mapping
   int tid;
   struct file *f;
   struct list_elem file_elem;
+  char *fname;
 };
 
 /* Global file system lock. */
