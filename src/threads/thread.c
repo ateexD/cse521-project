@@ -36,6 +36,7 @@ static struct list all_list;
 /* List of lock holders that have received a priority donation. */
 static struct list donation_lock_holders;
 
+/* List of struct that holds exit status for a parent and child thread duplet. */
 #ifdef USERPROG
 static struct list exit_list;
 #endif
@@ -86,6 +87,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/* Function to return the thread context for the requested thread, if it exists. */
 struct thread *get_thread(int tid)
 {
   struct list_elem *e;
@@ -98,7 +100,7 @@ struct thread *get_thread(int tid)
   {
     struct thread *t = list_entry (e, struct thread, allelem);
     if(t->tid == tid){
-      intr_set_level (old_level);//printf("\n FOUND \n");
+      intr_set_level (old_level);
       return t;
     }
   }
@@ -126,12 +128,14 @@ struct lock *lock;
 struct list_elem elem;
 };
 
+/* structure to hold the exit status of a thread. 
+   This struct is part of list exit_list.*/
 struct exit_status
 {
-tid_t child;
-tid_t parent;
-int status;
-struct list_elem elem;
+  tid_t child;
+  tid_t parent;
+  int status;
+  struct list_elem elem;
 };
 
 /* Initializes the threading system by transforming the code
@@ -174,6 +178,7 @@ thread_init (void)
   initial_thread->recent_cpu = 0;
 }
 
+/* Function to log exit status for a parent and child pair duplet. */
 #ifdef USERPROG
 void log_exit_status (tid_t child_tid, tid_t parent_tid, int status)
 {
@@ -184,6 +189,9 @@ void log_exit_status (tid_t child_tid, tid_t parent_tid, int status)
   list_push_front(&exit_list, &ex_stat->elem);
 }
 
+/* Function to return exit status for the thread requested by 
+   its parent. Returns -1 if the requested exit status by 
+   a thread is not for it's child.*/
 int get_exit_status(tid_t child_tid, tid_t parent_tid)
 {
   struct list_elem *e;
