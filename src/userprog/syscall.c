@@ -19,7 +19,6 @@ struct file_mapping
   int fd;
   int tid;
   struct file *f;
-  char *fname;
   struct list_elem file_elem;
 };
 
