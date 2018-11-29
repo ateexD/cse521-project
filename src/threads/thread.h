@@ -95,7 +95,7 @@ struct thread
     struct list_elem lock_elem;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    
+    char *executable_name;    
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

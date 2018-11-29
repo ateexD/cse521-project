@@ -334,7 +334,6 @@ halt_sys(void *esp)
 void
 exit_sys(int status)
 {
-  close_all(thread_current()->tid);
   process_exit(status);
 }
 
@@ -389,22 +388,10 @@ write_sys(int *esp)
     lock_release(&file_system_lock);
     return -1;
   }
-  struct thread *cur = thread_current();
-  char *delim = " ";
-  char *ptr;
-  char *fn_copy;
-  fn_copy = malloc(sizeof(strlen(cur->name)));
-  if(fn_copy == NULL)
-  {
-      lock_release(&file_system_lock);
-      return -1;
-  }
-  strlcpy(fn_copy, cur->name, strlen(cur->name)+1);
-  fn_copy = strtok_r(fn_copy, delim, &ptr);
-  
+    
   /* Check file name to ensure that executables are
    * not written over. */
-  if (strcmp(fm->fname, fn_copy)==0)
+  if (strcmp(fm->fname, cur->executable_name) == 0)
   {
     lock_release(&file_system_lock);
     return 0;

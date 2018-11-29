@@ -91,7 +91,7 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
 
       /* Exit instead of faulting. */
-      exit_sys (-1); 
+      process_exit(-1); 
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
