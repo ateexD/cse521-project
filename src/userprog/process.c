@@ -274,10 +274,16 @@ load (char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
+  
+  /* Make a copy of file name and add it
+   * to thread context. */
   char *copy = malloc(strlen(file_name));
   strlcpy(copy, file_name, strlen(file_name) + 1);
   t->executable_name = copy;
+
+  /* Deny write to executable file. */
   file_deny_write(file);
+
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
