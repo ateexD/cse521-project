@@ -388,15 +388,15 @@ write_sys(int *esp)
     lock_release(&file_system_lock);
     return -1;
   }
-    
+
   /* Check file name to ensure that executables are
    * not written over. */
-  if (strcmp(fm->fname, cur->executable_name) == 0)
+  if (strcmp(fm->fname, thread_current()->executable_name) == 0)
   {
     lock_release(&file_system_lock);
     return 0;
   }
-  free(fn_copy);
+  
   int actual_size = file_write(fm->f, buffer, size);
   lock_release(&file_system_lock);
   return actual_size;
